@@ -1,0 +1,55 @@
+#ifndef _LOS_MIP_ERR_H
+#define _LOS_MIP_ERR_H
+
+#define MIP_OK          0
+#define MIP_ERR_PARAM   1
+
+#define MIP_POOL_INIT_FAILED    22
+#define MIP_MEM_FREE_FAILED     23
+#define MIP_MPOOL_MALLOC_FAILED 24
+#define MIP_MPOOL_JUMP_LEN_ERR  25
+
+
+#define MIP_OSADP_MEM_NULL          31
+#define MIP_OSADP_FREE_FAILED       32
+#define MIP_OSADP_MSGPOST_FAILED    33
+#define MIP_OSADP_SEM_CREAT_FAILED  34
+#define MIP_OSADP_TIMEOUT           35
+#define MIP_OSADP_MSGPOST_INVALID_ARG   36
+#define MIP_OSADP_MSGPOST_QUEUE_FULL    37
+#define MIP_OSADP_QUEUE_EMPTY           38
+#define MIP_OSADP_OSERR                 39
+
+#define MIP_ETH_ERR_USE     41
+#define MIP_ETH_ERR_PARAM   42
+
+#define MIP_ARP_NOT_FOUND       51
+#define MIP_ARP_QUE_FULL        52
+#define MIP_ARP_SEND_FAILED     53
+#define MIP_ARP_WAIT_LIST_FULL  54
+#define MIP_ARP_NEED_REQ_ARP    55
+
+#define MIP_IP_HEAD_VER_ERR     61
+#define MIP_IP_LEN_ERR          62
+#define MIP_IP_HDR_CHECKSUM_ERR 63
+#define MIP_IP_NOT_SUPPORTED    64
+#define MIP_IP_NOT_FOR_US       65
+
+#define MIP_UDP_PKG_LEN_ERR     71
+#define MIP_UDP_PKG_CHKSUM_ERR  72
+
+#define MIP_ICMP_PKG_LEN_ERR    81
+#define MIP_ICMP_PKG_CHKSUM_ERR 82
+
+#define MIP_CON_NEW_MSG_FAILED      91
+#define MIP_CON_PORT_ALREADY_USED   92
+#define MIP_CON_PORT_RES_USED_OUT   93
+
+#define MIP_SOCKET_ERR              101
+#define MIP_SOCKET_NOT_SUPPORTED    102
+#define MIP_SOCKET_SND_TIMEOUT      103
+
+
+#define MIP_NOT_SUPPORTED           111
+
+#endif
