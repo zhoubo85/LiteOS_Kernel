@@ -390,7 +390,7 @@ LITE_OS_SEC_TEXT UINT32 LOS_QueueWrite( UINT32 uwQueueID,
 
     if (NULL == pBufferAddr)
     {
-        return LOS_ERRNO_QUEUE_WRITE_PTR_NULL;
+        /* return LOS_ERRNO_QUEUE_WRITE_PTR_NULL; */
     }
 
     if(0 == uwBufferSize)
