@@ -1,0 +1,32 @@
+#ifndef _LOS_COAP_ERR_H
+#define _LOS_COAP_ERR_H
+
+#define LOS_COAP_OK                 0
+
+#define LOS_COAP_PARAM_NULL         1
+#define LOS_COAP_BUF_LEN_TOO_SMALL  2
+
+#define LOS_COAP_VER_ERR            3
+#define LOS_COAP_TOKEN_LEN_ERR      4
+#define LOS_COAP_OPTION_DELTA_ERR   5
+#define LOS_COAP_OPTION_LEN_ERR     6
+#define LOS_COAP_OPTION_OVERRUN_ERR 7
+#define LOS_COAP_OPTION_POSTION_ERR 8
+#define LOS_COAP_CONTEX_BUF_NULL    9
+#define LOS_COAP_SND_LEN_TOO_BIG    10
+
+#define LOS_COAP_ENCODE_PKG_SIZE_ERR 11
+
+#define LOS_COAP_HEADER_ERR         12
+#define LOS_COAP_TOKEN_ERR          13
+#define LOS_COAP_OPTION_ERR         14
+
+#define LOS_COAP_MALLOC_FAILED      12
+
+#define LOS_COAP_STATACK_INIT_FAILED    13
+#define LOS_COAP_SOCKET_HANDLER_ERR     14
+#define LOS_COAP_SOCKET_READ_ERR        15
+#define LOS_COAP_SOCKET_NETWORK_ERR     16
+#define LOS_COAP_SOCKET_SETOPT_ERR      17
+#define LOS_COAP_SOCKET_ADDRCHK_ERR     19
+#endif
