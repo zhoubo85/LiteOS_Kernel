@@ -330,9 +330,9 @@
             <vShortWch>1</vShortWch>
             <VariousControls>
               <MiscControls></MiscControls>
-              <Define></Define>
+              <Define>USE_HAL_DRIVER,STM32F746xx,USE_STM32F7XX_NUCLEO_144,ADAFRUIT_TFT_JOY_SD_ID802,LOS_STM32F746ZG</Define>
               <Undefine></Undefine>
-              <IncludePath>..\..\example\include;..\..\kernel\base\include;..\..\kernel\include;..\..\kernel\link\keil;..\..\kernel\config;..\..\kernel\cpu\arm\cortex-m7;..\..\kernel\cmsis;..\..\platform\STM32F746ZG_NUCLEO;..\..\user;..\..\BSP\STM32F7xx\Drivers\CMSIS\Device\ST\STM32F7xx\Include;..\..\BSP\STM32F7xx\Drivers\STM32F7xx_HAL_Driver\Inc;..\..\BSP\STM32F7xx\Drivers\BSP\STM32F7xx_Nucleo_144;..\..\BSP\STM32F7xx\Drivers\BSP\Components\Common;..\..\BSP\STM32F7xx\Inc;..\..\BSP\STM32F7xx\Src;..\..\BSP\STM32F7xx\Drivers\CMSIS\Include;..\..\kernel\net\LwIP\src\include;..\..\kernel\net\LwIP\system;..\..\IotTP\json\cJSON-1.4.5;..\..\IotTP\microcoap;..\..\oceanagent</IncludePath>
+              <IncludePath>..\..\example\include;..\..\kernel\base\include;..\..\kernel\include;..\..\kernel\link\keil;..\..\kernel\config;..\..\kernel\cpu\arm\cortex-m7;..\..\kernel\cmsis;..\..\platform\STM32F746ZG_NUCLEO;..\..\user;..\..\BSP\STM32F7xx\Drivers\CMSIS\Device\ST\STM32F7xx\Include;..\..\BSP\STM32F7xx\Drivers\STM32F7xx_HAL_Driver\Inc;..\..\BSP\STM32F7xx\Drivers\BSP\STM32F7xx_Nucleo_144;..\..\BSP\STM32F7xx\Drivers\BSP\Components\Common;..\..\BSP\STM32F7xx\Inc;..\..\BSP\STM32F7xx\Src;..\..\BSP\STM32F7xx\Drivers\CMSIS\Include;..\..\subsys\net\LosCoAP\include;..\..\subsys\net\LosMIP\include;..\..\subsys\oclink\src;..\..\subsys\oclink\example</IncludePath>
             </VariousControls>
           </Cads>
           <Aads>
@@ -523,6 +523,246 @@
           </Files>
         </Group>
         <Group>
+          <GroupName>BSP/STM32F7xx</GroupName>
+          <Files>
+            <File>
+              <FileName>stm32f7xx_nucleo_144.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\..\BSP\STM32F7xx\Drivers\BSP\STM32F7xx_Nucleo_144\stm32f7xx_nucleo_144.c</FilePath>
+            </File>
+            <File>
+              <FileName>stm32f7xx_hal_timebase_tim.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\..\BSP\STM32F7xx\Src\stm32f7xx_hal_timebase_tim.c</FilePath>
+            </File>
+            <File>
+              <FileName>stm32f7xx_it.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\..\BSP\STM32F7xx\Src\stm32f7xx_it.c</FilePath>
+            </File>
+            <File>
+              <FileName>stm32f7xx_hal.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\..\BSP\STM32F7xx\Drivers\STM32F7xx_HAL_Driver\Src\stm32f7xx_hal.c</FilePath>
+            </File>
+            <File>
+              <FileName>stm32f7xx_hal_cortex.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\..\BSP\STM32F7xx\Drivers\STM32F7xx_HAL_Driver\Src\stm32f7xx_hal_cortex.c</FilePath>
+            </File>
+            <File>
+              <FileName>stm32f7xx_hal_ltdc.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\..\BSP\STM32F7xx\Drivers\STM32F7xx_HAL_Driver\Src\stm32f7xx_hal_ltdc.c</FilePath>
+            </File>
+            <File>
+              <FileName>stm32f7xx_hal_rcc.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\..\BSP\STM32F7xx\Drivers\STM32F7xx_HAL_Driver\Src\stm32f7xx_hal_rcc.c</FilePath>
+            </File>
+            <File>
+              <FileName>stm32f7xx_hal_rcc_ex.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\..\BSP\STM32F7xx\Drivers\STM32F7xx_HAL_Driver\Src\stm32f7xx_hal_rcc_ex.c</FilePath>
+            </File>
+            <File>
+              <FileName>stm32f7xx_hal_flash.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\..\BSP\STM32F7xx\Drivers\STM32F7xx_HAL_Driver\Src\stm32f7xx_hal_flash.c</FilePath>
+            </File>
+            <File>
+              <FileName>stm32f7xx_hal_flash_ex.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\..\BSP\STM32F7xx\Drivers\STM32F7xx_HAL_Driver\Src\stm32f7xx_hal_flash_ex.c</FilePath>
+            </File>
+            <File>
+              <FileName>stm32f7xx_hal_eth.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\..\BSP\STM32F7xx\Drivers\STM32F7xx_HAL_Driver\Src\stm32f7xx_hal_eth.c</FilePath>
+            </File>
+            <File>
+              <FileName>stm32f7xx_hal_tim.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\..\BSP\STM32F7xx\Drivers\STM32F7xx_HAL_Driver\Src\stm32f7xx_hal_tim.c</FilePath>
+            </File>
+            <File>
+              <FileName>stm32f7xx_hal_uart.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\..\BSP\STM32F7xx\Drivers\STM32F7xx_HAL_Driver\Src\stm32f7xx_hal_uart.c</FilePath>
+            </File>
+            <File>
+              <FileName>stm32f7xx_hal_dma.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\..\BSP\STM32F7xx\Drivers\STM32F7xx_HAL_Driver\Src\stm32f7xx_hal_dma.c</FilePath>
+            </File>
+            <File>
+              <FileName>stm32f7xx_hal_dma2d.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\..\BSP\STM32F7xx\Drivers\STM32F7xx_HAL_Driver\Src\stm32f7xx_hal_dma2d.c</FilePath>
+            </File>
+            <File>
+              <FileName>stm32f7xx_hal_tim_ex.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\..\BSP\STM32F7xx\Drivers\STM32F7xx_HAL_Driver\Src\stm32f7xx_hal_tim_ex.c</FilePath>
+            </File>
+            <File>
+              <FileName>stm32f7xx_hal_i2c.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\..\BSP\STM32F7xx\Drivers\STM32F7xx_HAL_Driver\Src\stm32f7xx_hal_i2c.c</FilePath>
+            </File>
+            <File>
+              <FileName>stm32f7xx_hal_i2c_ex.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\..\BSP\STM32F7xx\Drivers\STM32F7xx_HAL_Driver\Src\stm32f7xx_hal_i2c_ex.c</FilePath>
+            </File>
+            <File>
+              <FileName>stm32f7xx_hal_sdram.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\..\BSP\STM32F7xx\Drivers\STM32F7xx_HAL_Driver\Src\stm32f7xx_hal_sdram.c</FilePath>
+            </File>
+            <File>
+              <FileName>stm32f7xx_hal_gpio.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\..\BSP\STM32F7xx\Drivers\STM32F7xx_HAL_Driver\Src\stm32f7xx_hal_gpio.c</FilePath>
+            </File>
+            <File>
+              <FileName>stm32f7xx_ll_fmc.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\..\BSP\STM32F7xx\Drivers\STM32F7xx_HAL_Driver\Src\stm32f7xx_ll_fmc.c</FilePath>
+            </File>
+            <File>
+              <FileName>stm32f7xx_hal_pwr.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\..\BSP\STM32F7xx\Drivers\STM32F7xx_HAL_Driver\Src\stm32f7xx_hal_pwr.c</FilePath>
+            </File>
+            <File>
+              <FileName>stm32f7xx_hal_pwr_ex.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\..\BSP\STM32F7xx\Drivers\STM32F7xx_HAL_Driver\Src\stm32f7xx_hal_pwr_ex.c</FilePath>
+            </File>
+            <File>
+              <FileName>system_stm32f7xx.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\..\BSP\STM32F7xx\Src\system_stm32f7xx.c</FilePath>
+            </File>
+            <File>
+              <FileName>stm32f7xx_hal_spi.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\..\BSP\STM32F7xx\Drivers\STM32F7xx_HAL_Driver\Src\stm32f7xx_hal_spi.c</FilePath>
+            </File>
+          </Files>
+        </Group>
+        <Group>
+          <GroupName>subsys/net/mip</GroupName>
+          <Files>
+            <File>
+              <FileName>los_mip_arp.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\..\subsys\net\LosMIP\core\los_mip_arp.c</FilePath>
+            </File>
+            <File>
+              <FileName>los_mip_connect.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\..\subsys\net\LosMIP\core\los_mip_connect.c</FilePath>
+            </File>
+            <File>
+              <FileName>los_mip_dhcp.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\..\subsys\net\LosMIP\core\los_mip_dhcp.c</FilePath>
+            </File>
+            <File>
+              <FileName>los_mip_ethernet.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\..\subsys\net\LosMIP\core\los_mip_ethernet.c</FilePath>
+            </File>
+            <File>
+              <FileName>los_mip_icmp.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\..\subsys\net\LosMIP\core\los_mip_icmp.c</FilePath>
+            </File>
+            <File>
+              <FileName>los_mip_inet.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\..\subsys\net\LosMIP\core\los_mip_inet.c</FilePath>
+            </File>
+            <File>
+              <FileName>los_mip_ipv4.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\..\subsys\net\LosMIP\core\los_mip_ipv4.c</FilePath>
+            </File>
+            <File>
+              <FileName>los_mip_netbuf.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\..\subsys\net\LosMIP\core\los_mip_netbuf.c</FilePath>
+            </File>
+            <File>
+              <FileName>los_mip_netif.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\..\subsys\net\LosMIP\core\los_mip_netif.c</FilePath>
+            </File>
+            <File>
+              <FileName>los_mip_socket.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\..\subsys\net\LosMIP\core\los_mip_socket.c</FilePath>
+            </File>
+            <File>
+              <FileName>los_mip_tcpip_core.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\..\subsys\net\LosMIP\core\los_mip_tcpip_core.c</FilePath>
+            </File>
+            <File>
+              <FileName>los_mip_udp.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\..\subsys\net\LosMIP\core\los_mip_udp.c</FilePath>
+            </File>
+            <File>
+              <FileName>los_mip_ethif.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\..\subsys\net\LosMIP\driver\los_mip_ethif.c</FilePath>
+            </File>
+            <File>
+              <FileName>los_mip_mem.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\..\subsys\net\LosMIP\sys\los_mip_mem.c</FilePath>
+            </File>
+            <File>
+              <FileName>los_mip_osfunc.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\..\subsys\net\LosMIP\sys\los_mip_osfunc.c</FilePath>
+            </File>
+          </Files>
+        </Group>
+        <Group>
+          <GroupName>sybsys/net/loscoap</GroupName>
+          <Files>
+            <File>
+              <FileName>coap_core.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\..\subsys\net\LosCoAP\src\coap_core.c</FilePath>
+            </File>
+            <File>
+              <FileName>coap_os_liteos.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\..\subsys\net\LosCoAP\src\coap_os_liteos.c</FilePath>
+            </File>
+          </Files>
+        </Group>
+        <Group>
+          <GroupName>subsys/oclink</GroupName>
+          <Files>
+            <File>
+              <FileName>los_oclink.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\..\subsys\oclink\src\los_oclink.c</FilePath>
+            </File>
+            <File>
+              <FileName>los_oclink_demo.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\..\subsys\oclink\example\los_oclink_demo.c</FilePath>
+            </File>
+          </Files>
+        </Group>
+        <Group>
           <GroupName>example</GroupName>
           <Files>
             <File>
@@ -601,9 +841,9 @@
           <GroupName>startup</GroupName>
           <Files>
             <File>
-              <FileName>los_startup_keil.s</FileName>
+              <FileName>startup_stm32f746xx.s</FileName>
               <FileType>2</FileType>
-              <FilePath>..\..\platform\STM32F746ZG_NUCLEO\los_startup_keil.s</FilePath>
+              <FilePath>..\..\BSP\STM32F7xx\startup_stm32f746xx.s</FilePath>
             </File>
           </Files>
         </Group>
@@ -614,6 +854,11 @@
               <FileName>main.c</FileName>
               <FileType>1</FileType>
               <FilePath>..\..\user\main.c</FilePath>
+            </File>
+            <File>
+              <FileName>max7219_driver_func.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\..\user\max7219_driver_func.c</FilePath>
             </File>
           </Files>
         </Group>

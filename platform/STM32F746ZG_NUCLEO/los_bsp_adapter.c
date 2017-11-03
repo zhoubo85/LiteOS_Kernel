@@ -32,7 +32,8 @@
     global var
  *****************************************************************************/
 /* current system default HZ , should be set according to the microchip */
-const unsigned int sys_clk_freq = 16000000;
+//const unsigned int sys_clk_freq = 16000000;
+const unsigned int sys_clk_freq = 216000000;
 
 /* tick count per second , don't change this */
 const unsigned int tick_per_second = 1000;
