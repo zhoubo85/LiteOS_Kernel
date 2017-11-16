@@ -1,17 +1,67 @@
+/*----------------------------------------------------------------------------
+ * Copyright (c) <2017-2017>, <Huawei Technologies Co., Ltd>
+ * All rights reserved.
+ * Redistribution and use in source and binary forms, with or without modification,
+ * are permitted provided that the following conditions are met:
+ * 1. Redistributions of source code must retain the above copyright notice, this list of
+ * conditions and the following disclaimer.
+ * 2. Redistributions in binary form must reproduce the above copyright notice, this list
+ * of conditions and the following disclaimer in the documentation and/or other materials
+ * provided with the distribution.
+ * 3. Neither the name of the copyright holder nor the names of its contributors may be used
+ * to endorse or promote products derived from this software without specific prior written
+ * permission.
+ * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
+ * "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO,
+ * THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR
+ * PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR
+ * CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL,
+ * EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO,
+ * PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS;
+ * OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
+ * WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR
+ * OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF
+ * ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+ *---------------------------------------------------------------------------*/
+/*----------------------------------------------------------------------------
+ * Notice of Export Control Law
+ * ===============================================
+ * Huawei LiteOS may be subject to applicable export control laws and regulations, which might
+ * include those applicable to Huawei LiteOS of CHN and the country in which you are located.
+ * Import, export and usage of Huawei LiteOS in any manner by you shall be in compliance with such
+ * applicable export control laws and regulations.
+ *---------------------------------------------------------------------------*/
+
+#include <string.h>
+ 
 #include "../include/los_coap.h"
 #include "../include/los_coap_err.h"
-#include <string.h>
 
+
+/*****************************************************************************
+ Function    : los_coap_parse_header
+ Description : parse coap header info and store it
+ Input       : buf @ coap message buf
+               buflen @ coap message buf length
+ Output      : msg @ coap message pointer
+ Return      : LOS_COAP_OK means parse success, other value failed.
+ *****************************************************************************/
 int los_coap_parse_header(coap_msg_t *msg, const unsigned char *buf, int buflen)
 {
-    if (NULL == msg || NULL == buf)
+    if ((NULL == msg) || (NULL == buf))
+    {
         return -LOS_COAP_PARAM_NULL;
-    if (buflen < 4)
+    }
+    if (buflen < COAP_HEADER_SIZE)
+    {
         return -LOS_COAP_BUF_LEN_TOO_SMALL;
+    }
     
-    msg->head.ver = (buf[0] & 0xC0) >> 6;
-    if (msg->head.ver != 1)
+    msg->head.ver = (buf[0] & COAP_HEADER_VER_MASK) >> 6;
+    if (msg->head.ver != COAP_VERSION)
+    {
         return -LOS_COAP_VER_ERR;
+    }
     
     msg->head.t = (buf[0] & 0x30) >> 4;
     msg->head.tkl = buf[0] & 0x0F;
@@ -22,24 +72,39 @@ int los_coap_parse_header(coap_msg_t *msg, const unsigned char *buf, int buflen)
     return LOS_COAP_OK;
 }
 
+/*****************************************************************************
+ Function    : los_coap_parse_token
+ Description : parse coap token info and store it
+ Input       : buf @ coap message buf
+               buflen @ coap message buf length
+ Output      : msg @ coap message pointer
+ Return      : LOS_COAP_OK means parse success, other value failed.
+ *****************************************************************************/
 int los_coap_parse_token(coap_msg_t *msg, unsigned char *buf, int buflen)
 {
-    if (NULL == msg || NULL == buf)
+    if ((NULL == msg) || (NULL == buf))
+    {
         return -LOS_COAP_PARAM_NULL;
+    }
     if (msg->head.tkl == 0)
     {
         msg->tok = NULL;
         return LOS_COAP_OK;
     }
-    else if (msg->head.tkl <= 8)
+    else if (msg->head.tkl <= COAP_MAX_TOKEN_LEN)
     {
         if (4U + msg->head.tkl > buflen)
-            return -LOS_COAP_BUF_LEN_TOO_SMALL;   /* tok bigger than packet */
+        {
+            /* tok bigger than packet */
+            return -LOS_COAP_BUF_LEN_TOO_SMALL;   
+        }
         if (NULL == msg->tok)
         {
             msg->tok = (coap_token_t *)los_coap_malloc(sizeof(coap_token_t));
             if (NULL == msg->tok)
+            {
                 return -LOS_COAP_MALLOC_FAILED;
+            }
             memset(msg->tok, 0, sizeof(coap_token_t));
         }
         msg->tok->token = (unsigned char *)los_coap_malloc(msg->head.tkl);
@@ -62,7 +127,18 @@ int los_coap_parse_token(coap_msg_t *msg, unsigned char *buf, int buflen)
     }
 }
 
-int los_coap_parse_one_option(coap_msg_t *msg, unsigned short *sumdelta, const unsigned char **buf, int buflen)
+/*****************************************************************************
+ Function    : los_coap_parse_one_option
+ Description : parse coap one option info and store it in msg, it called by
+               los_coap_parse_opts_payload()
+ Input       : buf @ coap message's buf's pointer that start from option
+               buflen @ coap message buf length
+ Output      : msg @ coap message pointer
+               sumdelta @ last delta that get from last option.
+ Return      : LOS_COAP_OK means parse success, other value failed.
+ *****************************************************************************/
+int los_coap_parse_one_option(coap_msg_t *msg, unsigned short *sumdelta, 
+                              const unsigned char **buf, int buflen)
 {
     const unsigned char *p = *buf;
     unsigned char headlen = 1;
@@ -70,7 +146,7 @@ int los_coap_parse_one_option(coap_msg_t *msg, unsigned short *sumdelta, const u
     coap_option_t *newopt = NULL;
     coap_option_t *tmpopt = NULL;
     
-    if (NULL == msg || NULL == sumdelta || NULL == buf)
+    if ((NULL == msg) || (NULL == sumdelta) || (NULL == buf))
     {
         return -LOS_COAP_PARAM_NULL;
     }
@@ -101,7 +177,7 @@ int los_coap_parse_one_option(coap_msg_t *msg, unsigned short *sumdelta, const u
             return -LOS_COAP_BUF_LEN_TOO_SMALL;
         }
         delta = ((p[1] << 8) | p[2]) + 269;
-        p+=2;
+        p += 2;
     }
     else if (delta == 0x000f)
     {
@@ -126,7 +202,7 @@ int los_coap_parse_one_option(coap_msg_t *msg, unsigned short *sumdelta, const u
             return -LOS_COAP_BUF_LEN_TOO_SMALL;
         }
         len = ((p[1] << 8) | p[2]) + 269;
-        p+=2;
+        p += 2;
     }
     else if (len == 15)
     {
@@ -182,14 +258,23 @@ int los_coap_parse_one_option(coap_msg_t *msg, unsigned short *sumdelta, const u
     return LOS_COAP_OK;
 }
 
-int los_coap_parse_opts_payload(coap_msg_t *msg, const unsigned char *buf, int buflen)
+/*****************************************************************************
+ Function    : los_coap_parse_opts_payload
+ Description : parse coap payload and options and store it in msg
+ Input       : buf @ coap message's buf that start from option
+               buflen @ coap message buf length
+ Output      : msg @ coap message pointer
+ Return      : LOS_COAP_OK means parse success, other value failed.
+ *****************************************************************************/
+int los_coap_parse_opts_payload(coap_msg_t *msg, const unsigned char *buf, 
+                                int buflen)
 {
     unsigned short sumdelta = 0;
     const unsigned char *p = NULL;
     const unsigned char *end = buf + buflen;
     int ret;
     
-    if (NULL == msg || NULL == buf || buflen <= 4)
+    if ((NULL == msg) || (NULL == buf) || (buflen <= 4))
     {
         return -LOS_COAP_PARAM_NULL;
     }
@@ -210,7 +295,7 @@ int los_coap_parse_opts_payload(coap_msg_t *msg, const unsigned char *buf, int b
         }
     }
     
-    if (p+1 < end && *p == 0xFF)  /* payload marker */
+    if ((p+1 < end) && (*p == 0xFF))  /* payload marker */
     {
         msg->payloadlen = end-(p+1);
         msg->payload = (unsigned char *)los_coap_malloc(msg->payloadlen);
@@ -233,7 +318,17 @@ int los_coap_parse_opts_payload(coap_msg_t *msg, const unsigned char *buf, int b
     return LOS_COAP_OK;
 }
 
-static int los_coap_encode_option(coap_option_t *opt, int lastoptval, unsigned char *outbuf, int *len)
+/*****************************************************************************
+ Function    : los_coap_encode_option
+ Description : encode coap option from option struct to byte stream
+ Input       : opt @ option's pointer
+               lastoptval @ last option's value, it used for calc delta.
+ Output      : outbuf @ buf that used for storing the options bytes stream
+               len @ the bytes number that option changed to byte stream
+ Return      : LOS_COAP_OK means parse success, other value failed.
+ *****************************************************************************/
+static int los_coap_encode_option(coap_option_t *opt, int lastoptval, 
+                                  unsigned char *outbuf, int *len)
 {
     int delta = 0;
     int delta_ex = 0;
@@ -242,7 +337,7 @@ static int los_coap_encode_option(coap_option_t *opt, int lastoptval, unsigned c
     unsigned char tmp;
     int sumlen = 0;
     
-    if (NULL == opt || NULL == outbuf || NULL == len)
+    if ((NULL == opt) || (NULL == outbuf) || (NULL == len))
     {
         return -LOS_COAP_PARAM_NULL;
     }
@@ -290,23 +385,23 @@ static int los_coap_encode_option(coap_option_t *opt, int lastoptval, unsigned c
     tmp = (unsigned char)optlen;
     outbuf[0] |= tmp &0x0f;
     sumlen = 1;
-    if(delta == 13)
+    if (delta == 13)
     {
         outbuf[sumlen] = delta_ex;
         sumlen++;
     }
-    if(delta == 14)
+    if (delta == 14)
     {
         outbuf[sumlen] = (delta_ex & 0x0000ffff) >> 8;
         outbuf[sumlen + 1] = (delta_ex & 0x000000ff);
         sumlen += 2;
     }
-    if(optlen == 13)
+    if (optlen == 13)
     {
         outbuf[sumlen] = optlen_ex;
         sumlen++;
     }
-    if(optlen == 14)
+    if (optlen == 14)
     {
         outbuf[sumlen] = (optlen_ex & 0x0000ffff) >> 8;
         outbuf[sumlen+1] = (optlen_ex & 0x000000ff);
@@ -317,6 +412,15 @@ static int los_coap_encode_option(coap_option_t *opt, int lastoptval, unsigned c
     *len = sumlen + opt->optlen;
     return LOS_COAP_OK;
 }
+
+/*****************************************************************************
+ Function    : los_coap_build_byte_steam
+ Description : encode coap message to byte stream
+ Input       : msg @ coap message pointer
+ Output      : ctx @ coap connection instance pointer, it contains a buf 
+               that can store the byte stream
+ Return      : LOS_COAP_OK means parse success, other value failed.
+ *****************************************************************************/
 int los_coap_build_byte_steam(coap_context_t *ctx, coap_msg_t *msg)
 {
     int len = 0;
@@ -325,7 +429,7 @@ int los_coap_build_byte_steam(coap_context_t *ctx, coap_msg_t *msg)
     int sumdelta = 0;
     int msglen = 0;
     
-    if (NULL == ctx || NULL == msg)
+    if ((NULL == ctx) || (NULL == msg))
     {
         return -LOS_COAP_PARAM_NULL;
     }
@@ -370,7 +474,7 @@ int los_coap_build_byte_steam(coap_context_t *ctx, coap_msg_t *msg)
     
     len = 0;
     tmp = msg->option;
-    while(NULL != tmp)
+    while (NULL != tmp)
     {
         los_coap_encode_option(tmp, sumdelta, ctx->sndbuf.buf + offset, &len);
         offset = offset + len;
@@ -389,6 +493,17 @@ int los_coap_build_byte_steam(coap_context_t *ctx, coap_msg_t *msg)
     return msglen;
 }
 
+/*****************************************************************************
+ Function    : los_coap_add_option_to_list
+ Description : add a option to option list
+ Input       : head @ option list head pointer, if the option is the first 
+               option for coap message, its value should be NULL.
+               option @ the option number
+               vale @ option payload
+               len @ option payload length
+ Output      : None
+ Return      : head @ option list head pointer.
+ *****************************************************************************/
 coap_option_t * los_coap_add_option_to_list(coap_option_t *head, 
 								unsigned short option, 
 								char *value, int len)
@@ -396,7 +511,7 @@ coap_option_t * los_coap_add_option_to_list(coap_option_t *head,
     coap_option_t *tmp = NULL;
     coap_option_t *next = NULL;
     coap_option_t *newopt = NULL;
-    if (NULL == value || 0 == len)
+    if ((NULL == value) || (0 == len))
     {
         return NULL;
     }
@@ -433,7 +548,7 @@ coap_option_t * los_coap_add_option_to_list(coap_option_t *head,
         return newopt;
     }
     next = tmp->next;
-    while(NULL != tmp && NULL != next)
+    while ((NULL != tmp) && (NULL != next))
     {
         if (tmp->optnum <= option && next->optnum > option)
         {
@@ -453,19 +568,28 @@ coap_option_t * los_coap_add_option_to_list(coap_option_t *head,
     return head;
 }
 
+/*****************************************************************************
+ Function    : los_coap_free_option
+ Description : free all option in the option list
+ Input       : head @ option list head pointer, 
+ Output      : None
+ Return      : LOS_COAP_OK @ free ok, other value means free failed.
+ *****************************************************************************/
 int los_coap_free_option(coap_option_t *head)
 {
     coap_option_t *tmp = NULL;
     coap_option_t *next = NULL;
+    
     if (NULL == head)
     {
         return -LOS_COAP_PARAM_NULL;
     }
+    
     tmp = head;
-    while(NULL != tmp)
+    while (NULL != tmp)
     {
         next = tmp->next;
-        if(tmp->value)
+        if (tmp->value)
         {
             los_coap_free(tmp->value);
             tmp->value = NULL;
@@ -473,12 +597,20 @@ int los_coap_free_option(coap_option_t *head)
         los_coap_free(tmp);
         tmp = next;
     }
-    return 0;
+    return LOS_COAP_OK;
 }
 
+/*****************************************************************************
+ Function    : los_coap_add_token
+ Description : add a token to the coap message.
+ Input       : tok @ token's pointer 
+               tklen @ token length
+ Output      : msg @ coap message pointer
+ Return      : LOS_COAP_OK @ add success , other value means failed.
+ *****************************************************************************/
 int los_coap_add_token(coap_msg_t *msg, char *tok, int tklen)
 {
-    if (NULL == msg || tklen < 0 || tklen > COAP_TOKEN_LEN_MAX)
+    if ((NULL == msg) || (tklen < 0) || (tklen > COAP_MAX_TOKEN_LEN))
     {
         return -LOS_COAP_PARAM_NULL;
     }
@@ -509,9 +641,16 @@ int los_coap_add_token(coap_msg_t *msg, char *tok, int tklen)
     return LOS_COAP_OK;
 }
 
+/*****************************************************************************
+ Function    : los_coap_add_option
+ Description : add option list to the coap message.
+ Input       : opts @ option list pointer 
+ Output      : msg @ coap message pointer
+ Return      : LOS_COAP_OK @ add success , other value means failed.
+ *****************************************************************************/
 int los_coap_add_option(coap_msg_t *msg, coap_option_t *opts)
 {
-    if (NULL == msg || NULL == opts)
+    if ((NULL == msg) || (NULL == opts))
     {
         return -LOS_COAP_PARAM_NULL;
     }
@@ -520,9 +659,17 @@ int los_coap_add_option(coap_msg_t *msg, coap_option_t *opts)
     return LOS_COAP_OK;
 }
 
+/*****************************************************************************
+ Function    : los_coap_add_paylaod
+ Description : add payload to the coap message.
+ Input       : payload @ payload buf's pointer 
+               len @ paylaod data length
+ Output      : msg @ coap message pointer
+ Return      : LOS_COAP_OK @ add success , other value means failed.
+ *****************************************************************************/
 int los_coap_add_paylaod(coap_msg_t *msg, char *payload, int len)
 {
-    if (NULL == msg || NULL == payload || 0 == len)
+    if ((NULL == msg) || (NULL == payload) || (0 == len))
     {
         return -LOS_COAP_PARAM_NULL;
     }
@@ -543,12 +690,24 @@ int los_coap_add_paylaod(coap_msg_t *msg, char *payload, int len)
     return LOS_COAP_OK;
 }
 
+/*****************************************************************************
+ Function    : los_coap_new_msg
+ Description : create a coap message and init it with some data.and update
+               coap message id.
+ Input       : msgtype @ coap message type
+               code @ coap message code
+               optlist @ coap message option list
+               paylaod @ coap message payload
+               payloadlen @ coap payload length
+ Output      : ctx @ coap connection instance, it contains coap message id.
+ Return      : msg @ the created message's pointer.
+ *****************************************************************************/
 coap_msg_t *los_coap_new_msg(coap_context_t *ctx,
-								unsigned char msgtype, 
-								unsigned char code, 
-								coap_option_t *optlist, 
-								unsigned char *payload, 
-								int payloadlen)
+                             unsigned char msgtype, 
+                             unsigned char code, 
+                             coap_option_t *optlist, 
+                             unsigned char *payload, 
+                             int payloadlen)
 {
     coap_msg_t *msg = NULL;
 
@@ -594,6 +753,13 @@ coap_msg_t *los_coap_new_msg(coap_context_t *ctx,
     return msg;
 }
 
+/*****************************************************************************
+ Function    : los_coap_delete_msg
+ Description : free the coap message.
+ Input       : msg @ coap message pointer that need free.
+ Output      : None
+ Return      : LOS_COAP_OK @ free message ok, other valude means failed.
+ *****************************************************************************/
 int los_coap_delete_msg(coap_msg_t *msg)
 {
     coap_option_t *tmp = NULL;
@@ -612,7 +778,7 @@ int los_coap_delete_msg(coap_msg_t *msg)
     }
     
     tmp = msg->option;
-    while(NULL != tmp)
+    while (NULL != tmp)
     {
         next = tmp->next;
         los_coap_free(tmp->value);
@@ -630,13 +796,23 @@ int los_coap_delete_msg(coap_msg_t *msg)
     return LOS_COAP_OK;
 }
 
-
-int los_coap_send_back(coap_context_t *ctx, coap_msg_t *rcvmsg, unsigned char type)
+/*****************************************************************************
+ Function    : los_coap_send_back
+ Description : create a new coap message based on recived coap message 
+               and send it
+ Input       : ctx @ coap connection instance,
+               rcvmsg @ recived coap message's pointer
+               type @ new coap message's message type
+ Output      : None
+ Return      : LOS_COAP_OK @ process ok, other valude means failed.
+ *****************************************************************************/
+int los_coap_send_back(coap_context_t *ctx, coap_msg_t *rcvmsg, 
+                       unsigned char type)
 {
     coap_msg_t *newmsg = NULL;
     int datalen = 0;
     
-    if (NULL == ctx || NULL == rcvmsg)
+    if ((NULL == ctx) || (NULL == rcvmsg))
     {
         return -LOS_COAP_PARAM_NULL;
     }
@@ -669,6 +845,14 @@ int los_coap_send_back(coap_context_t *ctx, coap_msg_t *rcvmsg, unsigned char ty
     return LOS_COAP_OK;
 }
 
+/*****************************************************************************
+ Function    : los_coap_send_rst
+ Description : send reset message
+ Input       : ctx @ coap connection instance,
+               rcvmsg @ recived coap message's pointer
+ Output      : None
+ Return      : ret @ LOS_COAP_OK process ok, other valude means failed.
+ *****************************************************************************/
 int los_coap_send_rst(coap_context_t *ctx, coap_msg_t *rcvmsg)
 {
     int ret = 0;
@@ -676,6 +860,14 @@ int los_coap_send_rst(coap_context_t *ctx, coap_msg_t *rcvmsg)
     return ret;
 }
 
+/*****************************************************************************
+ Function    : los_coap_send_rst
+ Description : send ack message
+ Input       : ctx @ coap connection instance,
+               rcvmsg @ recived coap message's pointer
+ Output      : None
+ Return      : ret @ LOS_COAP_OK process ok, other valude means failed.
+ *****************************************************************************/
 int los_coap_send_ack(coap_context_t *ctx, coap_msg_t *rcvmsg)
 {
     int ret = 0;
@@ -683,6 +875,14 @@ int los_coap_send_ack(coap_context_t *ctx, coap_msg_t *rcvmsg)
     return ret;
 }
 
+/*****************************************************************************
+ Function    : los_coap_register_handler
+ Description : regist coap message process callback function
+ Input       : ctx @ coap connection instance,
+               func @ coap message process callback function pointer
+ Output      : None
+ Return      : ret @ LOS_COAP_OK process ok, other valude means failed.
+ *****************************************************************************/
 int los_coap_register_handler(coap_context_t *ctx, msghandler func)
 {
     if (NULL == ctx)
@@ -690,9 +890,17 @@ int los_coap_register_handler(coap_context_t *ctx, msghandler func)
         return -LOS_COAP_PARAM_NULL;
     }
     ctx->response_handler = func;
-    return 0;
+    return LOS_COAP_OK;
 }
 
+/*****************************************************************************
+ Function    : los_coap_addto_resndqueue
+ Description : add coap message to resend list.this list is for confirm mesage
+ Input       : ctx @ coap connection instance,
+               msg @ coap message pointer
+ Output      : None
+ Return      : LOS_COAP_OK process ok, other valude means failed.
+ *****************************************************************************/
 int los_coap_addto_resndqueue(coap_context_t *ctx, coap_msg_t *msg)
 {
     send_queue_t *tmp = NULL;
@@ -715,17 +923,28 @@ int los_coap_addto_resndqueue(coap_context_t *ctx, coap_msg_t *msg)
     return LOS_COAP_OK;
 }
 
+/*****************************************************************************
+ Function    : los_coap_addto_sndqueue
+ Description : add coap message to send list.this list's affect is decide by 
+               the coap user.
+ Input       : ctx @ coap connection instance,
+               msg @ coap message pointer
+ Output      : None
+ Return      : LOS_COAP_OK process ok, other valude means failed.
+ *****************************************************************************/
 int los_coap_addto_sndqueue(coap_context_t *ctx, coap_msg_t *msg)
 {
     send_queue_t *tmp = NULL;
-    if (NULL == ctx || NULL == msg)
+    if ((NULL == ctx) || (NULL == msg))
     {
         return -LOS_COAP_PARAM_NULL;
     }
     
     tmp = (send_queue_t *)los_coap_malloc(sizeof(send_queue_t));
     if (NULL == tmp)
+    {
         return -LOS_COAP_MALLOC_FAILED;
+    }
     memset(tmp, 0, sizeof(send_queue_t));
     
     tmp->msg = msg;
@@ -735,17 +954,26 @@ int los_coap_addto_sndqueue(coap_context_t *ctx, coap_msg_t *msg)
     return LOS_COAP_OK;
 }
 
+/*****************************************************************************
+ Function    : los_coap_remove_resndqueue
+ Description : remove a coap message from resend list.
+ Input       : ctx @ coap connection instance,
+               rcvmsg @ recived coap message pointer, it used for find out which
+               coap message need remove from resend list.
+ Output      : None
+ Return      : LOS_COAP_OK process ok, other valude means failed.
+ *****************************************************************************/
 int los_coap_remove_resndqueue(coap_context_t *ctx, coap_msg_t *rcvmsg)
 {
     send_queue_t *tmp = NULL;
     send_queue_t *before = NULL;
-    if (NULL == ctx || NULL == rcvmsg)
+    if ((NULL == ctx) || (NULL == rcvmsg))
     {
         return -LOS_COAP_PARAM_NULL;
     }
     
     tmp = ctx->resndque;
-    while(NULL != tmp)
+    while (NULL != tmp)
     {
         if (memcmp(rcvmsg->head.msgid, tmp->msg->head.msgid, 2) == 0)
         {
@@ -768,6 +996,13 @@ int los_coap_remove_resndqueue(coap_context_t *ctx, coap_msg_t *rcvmsg)
     return LOS_COAP_OK;
 }
 
+/*****************************************************************************
+ Function    : los_coap_discard_resndqueue
+ Description : remove all coap message from resend list.
+ Input       : ctx @ coap connection instance
+ Output      : None
+ Return      : LOS_COAP_OK process ok, other valude means failed.
+ *****************************************************************************/
 int los_coap_discard_resndqueue(coap_context_t *ctx)
 {
     send_queue_t *tmp = NULL;
@@ -778,7 +1013,7 @@ int los_coap_discard_resndqueue(coap_context_t *ctx)
     }
     
     tmp = ctx->resndque;
-    while(NULL != tmp)
+    while (NULL != tmp)
     {
         next = tmp->next;
         los_coap_delete_msg(tmp->msg);
@@ -790,17 +1025,26 @@ int los_coap_discard_resndqueue(coap_context_t *ctx)
     return LOS_COAP_OK;
 }
 
+/*****************************************************************************
+ Function    : los_coap_remove_sndqueue
+ Description : remove a coap message from send list.
+ Input       : ctx @ coap connection instance
+               msg @ coap message's pointer, that need remove from send list
+ Output      : None
+ Return      : LOS_COAP_OK process ok, other valude means failed.
+ *****************************************************************************/
 int los_coap_remove_sndqueue(coap_context_t *ctx, coap_msg_t *msg)
 {
     send_queue_t *tmp = NULL;
     send_queue_t *before = NULL;
-    if (NULL == ctx || NULL == msg)
+    
+    if ((NULL == ctx) || (NULL == msg))
     {
         return -LOS_COAP_PARAM_NULL;
     }
     
     tmp = ctx->sndque;
-    while(NULL != tmp)
+    while (NULL != tmp)
     {
         if (NULL != tmp->msg)
         {
@@ -827,6 +1071,16 @@ int los_coap_remove_sndqueue(coap_context_t *ctx, coap_msg_t *msg)
     
     return LOS_COAP_OK;
 }
+
+/*****************************************************************************
+ Function    : los_coap_add_resource
+ Description : add coap resouce, it contains resouce that remote endpoint can
+               observe, get, post....
+ Input       : ctx @ coap connection instance
+               res @ resource of coap endpoint.
+ Output      : None
+ Return      : LOS_COAP_OK process ok, other valude means failed.
+ *****************************************************************************/
 int los_coap_add_resource(coap_context_t *ctx, coap_res_t *res)
 {
     if (NULL == ctx)
@@ -838,27 +1092,50 @@ int los_coap_add_resource(coap_context_t *ctx, coap_res_t *res)
     return LOS_COAP_OK;
 }
 
-/* note: this func is for the future, now we don't use it */
+/*****************************************************************************
+ Function    : los_coap_option_check_critical
+ Description : add coap private resouce, it contains socket handle ...
+ Input       : ctx @ coap connection instance
+               msg @ coap message that need to checkout.
+ Output      : None
+ Return      : LOS_COAP_OK process ok, other valude means failed.
+ *****************************************************************************/
 int los_coap_option_check_critical(coap_msg_t *msg)
 {
     unsigned short option;
+    
+    /* note: this func is for the future, now we don't use it */
     switch(option)
     {
         
     }
     return LOS_COAP_OK;
 }
-static coap_option_t *los_coap_find_opts(coap_msg_t *rcvmsg, unsigned char num, unsigned char *count)
+
+/*****************************************************************************
+ Function    : los_coap_find_opts
+ Description : find out a coap option number that equal the input option number
+               it called by los_coap_handle_request().
+ Input       : rcvmsg @ recived coap message's pointer.
+               num @ opition number that need to check.
+ Output      : count @ total number of the option number that find in the coap
+               messaget
+ Return      : first @ the first opion's pointer in the coap message.
+ *****************************************************************************/
+static coap_option_t *los_coap_find_opts(coap_msg_t *rcvmsg, 
+                                         unsigned char num, 
+                                         unsigned char *count)
 {
     /* FIXME, options is always sorted, can find faster than this */
     size_t i;
     coap_option_t *first = NULL;
     coap_option_t *tmp = NULL;
     *count = 0;
+    
     tmp = rcvmsg->option;
-    for (i=0;i<rcvmsg->optcnt;i++)
+    for (i = 0; i < rcvmsg->optcnt; i++)
     {
-        if ( tmp->optnum == num)
+        if (tmp->optnum == num)
         {
             if (NULL == first)
             {
@@ -877,6 +1154,16 @@ static coap_option_t *los_coap_find_opts(coap_msg_t *rcvmsg, unsigned char num, 
     }
     return first;
 }
+
+/*****************************************************************************
+ Function    : los_coap_handle_request
+ Description : process reviced coap messages that request resource in the 
+               local resource.
+ Input       : ctx @ coap connection instance.
+               rcvmsg @ recived coap message
+ Output      : None
+ Return      : LOS_COAP_OK means process ok, other value means error happended.
+ *****************************************************************************/
 int los_coap_handle_request(coap_context_t *ctx, coap_msg_t *rcvmsg)
 {
     coap_res_t *res = NULL;
@@ -889,12 +1176,12 @@ int los_coap_handle_request(coap_context_t *ctx, coap_msg_t *rcvmsg)
     unsigned char pathcnt = 0;
     int findres = 0;
     
-    if (NULL == ctx || NULL == rcvmsg)
+    if ((NULL == ctx) || (NULL == rcvmsg))
     {
         return -LOS_COAP_PARAM_NULL;
     }
     res = ctx->res;
-    while(NULL != res->handler)
+    while (NULL != res->handler)
     {
         /* find if the res is in the ctx->res */
         if (res->method != rcvmsg->head.code)
@@ -902,13 +1189,16 @@ int los_coap_handle_request(coap_context_t *ctx, coap_msg_t *rcvmsg)
             res++;
             continue;
         }
-        opthead = los_coap_find_opts(rcvmsg, COAP_OPTION_URI_PATH, &pathcnt);
-        if (NULL != opthead && pathcnt == res->path->count)
+        opthead = los_coap_find_opts(rcvmsg, 
+                                     COAP_OPTION_URI_PATH, 
+                                     &pathcnt);
+        if ((NULL != opthead) 
+            && (pathcnt == res->path->count))
         {
             tmp = opthead;
-            for(i = 0; i < pathcnt; i++)
+            for (i = 0; i < pathcnt; i++)
             {
-                if(tmp->optlen != strlen(res->path->elems[i]))
+                if (tmp->optlen != strlen(res->path->elems[i]))
                 {
                     tmp = tmp->next;
                     break;
@@ -933,23 +1223,28 @@ int los_coap_handle_request(coap_context_t *ctx, coap_msg_t *rcvmsg)
     {
         if (rcvmsg->head.t == COAP_MESSAGE_CON)
         {
-            respmsg = los_coap_new_msg(ctx,COAP_MESSAGE_ACK, COAP_RESP_CODE(205), NULL,NULL, 0);
+            respmsg = los_coap_new_msg(ctx,COAP_MESSAGE_ACK, 
+                                       COAP_RESP_CODE(205), 
+                                       NULL,NULL, 0);
         }
         else
         {
-            respmsg = los_coap_new_msg(ctx,COAP_MESSAGE_NON, COAP_RESP_CODE(205), NULL,NULL, 0);
+            respmsg = los_coap_new_msg(ctx,COAP_MESSAGE_NON, 
+                                       COAP_RESP_CODE(205), 
+                                       NULL,NULL, 0);
         }
         
         if (NULL == respmsg)
         {
-            return -1;
+            return -LOS_COAP_PARAM_NULL;
         }
         
-        ret = los_coap_add_token(respmsg, (char *)rcvmsg->tok->token, rcvmsg->tok->tklen);
+        ret = los_coap_add_token(respmsg, (char *)rcvmsg->tok->token, 
+                                 rcvmsg->tok->tklen);
         if (ret != LOS_COAP_OK)
         {
             los_coap_delete_msg(respmsg);
-            return -1;
+            return -LOS_COAP_NG;
         }
 
         /* match the option, so deliver msg to resource handler function */
@@ -958,35 +1253,49 @@ int los_coap_handle_request(coap_context_t *ctx, coap_msg_t *rcvmsg)
     }
     else
     {
-        opthead = los_coap_add_option_to_list(opthead, COAP_OPTION_CONTENT_FORMAT, contype, 2);
+        opthead = los_coap_add_option_to_list(opthead, 
+                                              COAP_OPTION_CONTENT_FORMAT, 
+                                              contype, 2);
         if (rcvmsg->head.t == COAP_MESSAGE_CON)
         {
-            respmsg = los_coap_new_msg(ctx,COAP_MESSAGE_ACK, COAP_RESP_CODE(404), opthead, NULL, 0);
+            respmsg = los_coap_new_msg(ctx, COAP_MESSAGE_ACK, 
+                                       COAP_RESP_CODE(404), 
+                                       opthead, NULL, 0);
         }
         else
         {
-            respmsg = los_coap_new_msg(ctx,COAP_MESSAGE_NON, COAP_RESP_CODE(404), opthead, NULL, 0);
+            respmsg = los_coap_new_msg(ctx,COAP_MESSAGE_NON, 
+                                       COAP_RESP_CODE(404), 
+                                       opthead, NULL, 0);
         }
         
         if (NULL == respmsg)
         {
-            return -1;
+            return -LOS_COAP_PARAM_NULL;
         }
-        ret = los_coap_add_token(respmsg, (char *)rcvmsg->tok->token, rcvmsg->tok->tklen);
+        ret = los_coap_add_token(respmsg, (char *)rcvmsg->tok->token, 
+                                 rcvmsg->tok->tklen);
         if (ret != LOS_COAP_OK)
         {
             los_coap_delete_msg(respmsg);
-            return -1;
+            return -LOS_COAP_NG;
         }
         los_coap_send(ctx, respmsg);
     }
     return LOS_COAP_OK;
 }
 
-
+/*****************************************************************************
+ Function    : los_coap_handle_msg
+ Description : process reviced coap messages 
+ Input       : ctx @ coap connection instance.
+               msg @ recived coap message
+ Output      : None
+ Return      : LOS_COAP_OK means process ok, other value means error happended.
+ *****************************************************************************/
 int los_coap_handle_msg(coap_context_t *ctx, coap_msg_t *msg)
 {
-    switch(msg->head.t)
+    switch (msg->head.t)
     {
         case COAP_MESSAGE_ACK:
             los_coap_remove_resndqueue(ctx, msg);
@@ -1011,6 +1320,13 @@ int los_coap_handle_msg(coap_context_t *ctx, coap_msg_t *msg)
     return LOS_COAP_OK;
 }
 
+/*****************************************************************************
+ Function    : los_coap_read
+ Description : read coap messages from tcp/ip stack.
+ Input       : ctx @ coap connection instance.
+ Output      : None
+ Return      : LOS_COAP_OK means process ok, other value means error happended.
+ *****************************************************************************/
 int los_coap_read(coap_context_t *ctx)
 {
     coap_msg_t *msg = NULL;
@@ -1021,7 +1337,9 @@ int los_coap_read(coap_context_t *ctx)
     {
         return -LOS_COAP_PARAM_NULL;
     }
-    len = ctx->netops->network_read(ctx->udpio, (char *)ctx->rcvbuf.buf, ctx->rcvbuf.len);
+    len = ctx->netops->network_read( ctx->udpio, 
+                                     (char *)ctx->rcvbuf.buf, 
+                                     ctx->rcvbuf.len);
     if (len == 0)
     {
         return LOS_COAP_OK;
@@ -1061,19 +1379,31 @@ int los_coap_read(coap_context_t *ctx)
         los_coap_delete_msg(msg);
         return -LOS_COAP_OPTION_ERR;
     }
-    /* if pack is ack, rst ... no need send anything, if con msg, send a ack and pass to response_handler */
+    
+    /* 
+       if pack is ack, rst ... no need send anything, if con msg, 
+       send a ack and pass to response_handler
+    */
     los_coap_handle_msg(ctx, msg);
     los_coap_delete_msg(msg);
     
     return LOS_COAP_OK;
 }
 
+/*****************************************************************************
+ Function    : los_coap_send
+ Description : send coap messages to tcp/ip stack.
+ Input       : ctx @ coap connection instance.
+               msg @ coap message that need to send.
+ Output      : None
+ Return      : LOS_COAP_OK means process ok, other value means error happended.
+ *****************************************************************************/
 int los_coap_send(coap_context_t *ctx, coap_msg_t *msg)
 {
     int slen = 0;
     int n = 0;
     int retry = 0;
-    if (NULL == ctx || NULL == msg)
+    if ((NULL == ctx) || (NULL == msg))
     {
         return -LOS_COAP_PARAM_NULL;
     }
@@ -1108,13 +1438,11 @@ int los_coap_send(coap_context_t *ctx, coap_msg_t *msg)
         {
             break;
         }
-    }while(n != slen);
+    } while(n != slen);
     /* delete msg that do not need stored for retransmit */
-    if(msg->head.t != COAP_MESSAGE_CON)
+    if (msg->head.t != COAP_MESSAGE_CON)
     {
         los_coap_delete_msg(msg);
     }
     return n;
 }
-
-

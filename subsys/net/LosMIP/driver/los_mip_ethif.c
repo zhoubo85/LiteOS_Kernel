@@ -1,4 +1,38 @@
-
+/*----------------------------------------------------------------------------
+ * Copyright (c) <2017-2017>, <Huawei Technologies Co., Ltd>
+ * All rights reserved.
+ * Redistribution and use in source and binary forms, with or without modification,
+ * are permitted provided that the following conditions are met:
+ * 1. Redistributions of source code must retain the above copyright notice, this list of
+ * conditions and the following disclaimer.
+ * 2. Redistributions in binary form must reproduce the above copyright notice, this list
+ * of conditions and the following disclaimer in the documentation and/or other materials
+ * provided with the distribution.
+ * 3. Neither the name of the copyright holder nor the names of its contributors may be used
+ * to endorse or promote products derived from this software without specific prior written
+ * permission.
+ * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
+ * "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO,
+ * THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR
+ * PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR
+ * CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL,
+ * EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO,
+ * PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS;
+ * OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
+ * WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR
+ * OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF
+ * ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+ *---------------------------------------------------------------------------*/
+/*----------------------------------------------------------------------------
+ * Notice of Export Control Law
+ * ===============================================
+ * Huawei LiteOS may be subject to applicable export control laws and regulations, which might
+ * include those applicable to Huawei LiteOS of CHN and the country in which you are located.
+ * Import, export and usage of Huawei LiteOS in any manner by you shall be in compliance with such
+ * applicable export control laws and regulations.
+ *---------------------------------------------------------------------------*/
+#include <string.h>
+ 
 #ifdef LOS_STM32F746ZG
 #include "stm32f7xx_hal.h"
 #endif
@@ -13,7 +47,7 @@
 #include "los_mip_arp.h"
 #include "los_mip_tcpip_core.h"
 
-#include <string.h>
+
 
 #define MIP_DEF_MAC0 0x02
 #define MIP_DEF_MAC1 0x0A
@@ -49,7 +83,6 @@ uint8_t Rx_Buff[ETH_RXBUFNB][ETH_RX_BUF_SIZE];/* Ethernet Receive Buffer */
 uint8_t Tx_Buff[ETH_TXBUFNB][ETH_TX_BUF_SIZE];/* Ethernet Transmit Buffer */
 
 #elif defined ( __GNUC__ )/* GNU Compiler */
-
 ETH_DMADescTypeDef  DMARxDscrTab[ETH_RXBUFNB];/* Ethernet Rx MA Descriptor */
 ETH_DMADescTypeDef  DMATxDscrTab[ETH_TXBUFNB];/* Ethernet Tx DMA Descriptor */
 uint8_t Rx_Buff[ETH_RXBUFNB][ETH_RX_BUF_SIZE];/* Ethernet Receive Buffer */
@@ -67,11 +100,13 @@ ETH_HandleTypeDef EthHandle;
 static mip_sem_t g_eth_datsem;
 static void los_mip_ethif_input_task( void * argument );
 
-/**
-  * @brief  Initializes the ETH MSP.
-  * @param  heth: ETH handle
-  * @retval None
-  */
+/*****************************************************************************
+ Function    : HAL_ETH_MspInit
+ Description : initializes the ethnet msp
+ Input       : heth @ ETH handle
+ Output      : 
+ Return      : None
+ *****************************************************************************/
 void HAL_ETH_MspInit(ETH_HandleTypeDef *heth)
 {
 
@@ -125,25 +160,27 @@ void HAL_ETH_MspInit(ETH_HandleTypeDef *heth)
     __HAL_RCC_ETH_CLK_ENABLE();
 }
 
-/**
-  * @brief  Ethernet Rx Transfer completed callback
-  * @param  heth: ETH handle
-  * @retval None
-  */
+/*****************************************************************************
+ Function    : HAL_ETH_MspInit
+ Description : Ethernet Rx Transfer completed callback
+ Input       : heth @ ETH handle
+ Output      : 
+ Return      : None
+ *****************************************************************************/
 void HAL_ETH_RxCpltCallback(ETH_HandleTypeDef *heth)
 {
     (void)heth;
     los_mip_sem_signal(&g_eth_datsem);
 }
 
-
-/**
-  * @brief In this function, the hardware should be initialized.
-  * Called from los_mip_dev_eth_init().
-  *
-  * @param netif: initialized network interface structure
-  *        for this ethernet interface
-  */
+/*****************************************************************************
+ Function    : los_mip_eth_hw_init
+ Description : initializes the ethnet hardware and start data recive task 
+               Called from los_mip_dev_eth_init().
+ Input       : netif @ network interface pointer
+ Output      : 
+ Return      : None
+ *****************************************************************************/
 static void los_mip_eth_hw_init(struct netif *netif)
 {
     uint8_t macaddress[6]= { MIP_DEF_MAC0, MIP_DEF_MAC1, MIP_DEF_MAC2, MIP_DEF_MAC3, MIP_DEF_MAC4, MIP_DEF_MAC5 };
@@ -203,17 +240,16 @@ static void los_mip_eth_hw_init(struct netif *netif)
     HAL_ETH_Start(&EthHandle);
 }
 
-
-/**
-  * @brief This function do the actual transmission of the packet. The packet is
-  * contained in the netbuf that is passed to the function. This netbuf
-  * might be chained.
-  *
-  * @param netif: the network interface structure for this ethernet interface
-  * @param p: the MAC packet to send (e.g. IP packet including MAC addresses and type)
-  * @return MIP_OK if the packet could be sent
-  * @note 
-  */
+/*****************************************************************************
+ Function    : los_mip_eth_xmit
+ Description : do the actual transmission of the packet. The packet is
+               contained in the netbuf that is passed to the function. This 
+               netbuf might be chained.
+ Input       : netif @ network interface pointer
+               p @ the MAC packet to send
+ Output      : None
+ Return      : MIP_OK if the packet could be sent
+ *****************************************************************************/
 static int los_mip_eth_xmit(struct netif *netif, struct netbuf *p)
 {
     int errval;
@@ -225,14 +261,16 @@ static int los_mip_eth_xmit(struct netif *netif, struct netbuf *p)
     uint32_t byteslefttocopy = 0;
     uint32_t payloadoffset = 0;
 
+    (void)netif;
+    
     DmaTxDesc = EthHandle.TxDesc;
     bufferoffset = 0;
   
     /* copy frame from netbuf to driver buffers */
-    for(q = p; q != NULL; q = q->next)
+    for (q = p; q != NULL; q = q->next)
     {
         /* Is this buffer available? If not, goto error */
-        if((DmaTxDesc->Status & ETH_DMATXDESC_OWN) != (uint32_t)RESET)
+        if ((DmaTxDesc->Status & ETH_DMATXDESC_OWN) != (uint32_t)RESET)
         {
             errval = -MIP_ETH_ERR_USE;
             goto error;
@@ -243,10 +281,11 @@ static int los_mip_eth_xmit(struct netif *netif, struct netbuf *p)
         payloadoffset = 0;
     
         /* Check if the length of data to copy is bigger than Tx buffer size*/
-        while( (byteslefttocopy + bufferoffset) > ETH_TX_BUF_SIZE )
+        while ((byteslefttocopy + bufferoffset) > ETH_TX_BUF_SIZE )
         {
             /* Copy data to Tx buffer*/
-            memcpy( (uint8_t*)((uint8_t*)buffer + bufferoffset), (uint8_t*)((uint8_t*)q->payload + payloadoffset), (ETH_TX_BUF_SIZE - bufferoffset) );
+            memcpy((uint8_t*)((uint8_t*)buffer + bufferoffset), (uint8_t*)((uint8_t*)q->payload + payloadoffset), 
+                   (ETH_TX_BUF_SIZE - bufferoffset) );
 
             /* Point to next descriptor */
             DmaTxDesc = (ETH_DMADescTypeDef *)(DmaTxDesc->Buffer2NextDescAddr);
@@ -291,15 +330,14 @@ error:
     return errval;
 }
 
-
-/**
-  * @brief Should allocate a netbuf and transfer the bytes of the incoming
-  * packet from the interface into the netbuf.
-  *
-  * @param netif the network interface structure for this ethernet interface
-  * @return a netbuf filled with the received packet (including MAC header)
-  *         NULL on memory error
-  */
+/*****************************************************************************
+ Function    : los_mip_eth_pktin
+ Description : read network data from ehtnet, and malloc pacakge buf to stored
+               it .
+ Input       : netif @ network interface pointer which the data come from
+ Output      : None
+ Return      : p @ the MAC packet stored. if failed , return NULL.
+ *****************************************************************************/
 static struct netbuf * los_mip_eth_pktin(struct netif *netif)
 {
     struct netbuf *p = NULL, *q = NULL;
@@ -312,8 +350,10 @@ static struct netbuf * los_mip_eth_pktin(struct netif *netif)
     uint32_t i=0;
   
     /* get received frame */
-    if(HAL_ETH_GetReceivedFrame_IT(&EthHandle) != HAL_OK)
+    if (HAL_ETH_GetReceivedFrame_IT(&EthHandle) != HAL_OK)
+    {
         return NULL;
+    }
   
     /* Obtain the size of the packet and put it into the "len" variable. */
     len = EthHandle.RxFrameInfos.length;
@@ -333,16 +373,18 @@ static struct netbuf * los_mip_eth_pktin(struct netif *netif)
         dmarxdesc = EthHandle.RxFrameInfos.FSRxDesc;
         bufferoffset = 0;
 
-        for(q = p; q != NULL; q = q->next)
+        for (q = p; q != NULL; q = q->next)
         {
             byteslefttocopy = q->len;
             payloadoffset = 0;
 
             /* Check if the length of bytes to copy in current netbuf is bigger than Rx buffer size */
-            while( (byteslefttocopy + bufferoffset) > ETH_RX_BUF_SIZE )
+            while ((byteslefttocopy + bufferoffset) > ETH_RX_BUF_SIZE)
             {
                 /* Copy data to netbuf */
-                memcpy( (uint8_t*)((uint8_t*)q->payload + payloadoffset), (uint8_t*)((uint8_t*)buffer + bufferoffset), (ETH_RX_BUF_SIZE - bufferoffset));
+                memcpy((uint8_t*)((uint8_t*)q->payload + payloadoffset), 
+                       (uint8_t*)((uint8_t*)buffer + bufferoffset), 
+                       (ETH_RX_BUF_SIZE - bufferoffset));
 
                 /* Point to next descriptor */
                 dmarxdesc = (ETH_DMADescTypeDef *)(dmarxdesc->Buffer2NextDescAddr);
@@ -354,7 +396,8 @@ static struct netbuf * los_mip_eth_pktin(struct netif *netif)
             }
 
             /* Copy remaining data in netbuf */
-            memcpy( (uint8_t*)((uint8_t*)q->payload + payloadoffset), (uint8_t*)((uint8_t*)buffer + bufferoffset), byteslefttocopy);
+            memcpy((uint8_t*)((uint8_t*)q->payload + payloadoffset), 
+                   (uint8_t*)((uint8_t*)buffer + bufferoffset), byteslefttocopy);
             bufferoffset = bufferoffset + byteslefttocopy;
         }
     }
@@ -383,28 +426,28 @@ static struct netbuf * los_mip_eth_pktin(struct netif *netif)
     return p;
 }
 
-/**
-  * @brief This function is the ethernet data input task, it is processed when a packet 
-  * is ready to be read from the interface. It uses the function los_mip_eth_pktin() 
-  * that should handle the actual reception of bytes from the network
-  * interface. Then the type of the received packet is determined and
-  * the appropriate input function is called.
-  *
-  * @param argument the network interface structure for this ethernet interface
-*/
+/*****************************************************************************
+ Function    : los_mip_ethif_input_task
+ Description : network package input task. send all package to tcp/ip core task.
+               It uses the function los_mip_eth_pktin() that should handle the 
+               actual reception of bytes from the network interface
+ Input       : argument @ network interface pointer which the data come from
+ Output      : None
+ Return      : None
+ *****************************************************************************/
 void los_mip_ethif_input_task(void * argument)
 {
     struct netbuf *p;
     struct netif *netif = (struct netif *) argument;
   
-    for( ;; )
+    for (;;)
     {
         if (NULL == netif)
         {
             los_mip_delay(20);
             continue;
         }
-        if(los_mip_sem_wait(&g_eth_datsem, MIP_ETH_IN_WAIT_FOREVER) != MIP_OS_TIMEOUT)
+        if (los_mip_sem_wait(&g_eth_datsem, MIP_ETH_IN_WAIT_FOREVER) != MIP_OS_TIMEOUT)
         {
             do
             {
@@ -416,7 +459,7 @@ void los_mip_ethif_input_task(void * argument)
                         netbuf_free(p);
                     }
                 }
-            }while(p!=NULL);
+            } while(p!=NULL);
         }
     }
 }
@@ -433,6 +476,13 @@ void los_mip_ethif_input_task(void * argument)
   * @return MIP_OK if the loopif is initialized
   *         
   */
+/*****************************************************************************
+ Function    : los_mip_dev_eth_init
+ Description : call function to init ethnet hardware 
+ Input       : netif @ network interface pointer which need init
+ Output      : None
+ Return      : MIP_OK init ok
+ *****************************************************************************/
 int los_mip_dev_eth_init(struct netif *netif)
 {
     if (NULL == netif)
