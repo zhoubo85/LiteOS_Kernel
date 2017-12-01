@@ -107,6 +107,60 @@ struct mip_conn *los_mip_walk_con(s8_t *finished)
 }
 
 /*****************************************************************************
+ Function    : los_mip_get_conn
+ Description : get connection which will deal with the package.
+ Input       : 
+ Output      : None
+ Return      :  
+ *****************************************************************************/
+struct mip_conn* los_mip_tcp_get_conn(struct netbuf *buf, 
+                                      ip_addr_t *src, ip_addr_t *dst)
+{
+    struct mip_conn *ret = NULL;
+    struct mip_skt_mgr *tmp = NULL;
+    u8_t flags = 0;
+    int i = 0;
+    struct tcp_hdr *tcph = NULL;
+    
+    if (NULL == buf || NULL == src || NULL == dst)
+    {
+        /* param err, just return a NULL conn */
+        return NULL;
+    }
+    tcph = (struct tcp_hdr *)buf->payload;
+    flags = MIP_TCPH_FLAGS(tcph);
+    
+    flags = MIP_TCPH_FLAGS(tcph);
+    for(i = 0; i < MIP_CONN_MAX; i++)
+    {
+        tmp = &g_sockets[i];
+        if (tmp->con && (tmp->con->type == CONN_TCP)
+            && (tmp->con->ctlb.tcp->lport == tcph->dport))
+        {
+            if ((tmp->con->ctlb.tcp->rport == tcph->sport)
+                && (tmp->con->ctlb.tcp->remote_ip.addr == src->addr)
+                && (tmp->con->ctlb.tcp->state != TCP_CLOSED))
+            {
+                if ((tmp->con->ctlb.tcp->localip.addr == INADDR_ANY) 
+                    || (tmp->con->ctlb.tcp->localip.addr == dst->addr))
+                /* message is for a already created connection */
+                ret = tmp->con;
+                break;
+            }
+            else if ((tmp->con->state == STAT_LISTEN)
+                     && ((flags & MIP_TCP_SYN) && !(flags & MIP_TCP_ACK)))
+            {
+                /* message is for creating a new connection */
+                ret = tmp->con;
+                break;
+            }
+        }
+    }
+
+    return ret;
+}
+
+/*****************************************************************************
  Function    : los_mip_port_is_used
  Description : judge if the port input has already be used.
  Input       : port @ the port number that need to process.
@@ -221,6 +275,104 @@ u16_t los_mip_generate_port(void)
 }
 
 /*****************************************************************************
+ Function    : los_mip_conn_init_tcpctl
+ Description : init tcp connection control block by default value 
+ Input       : ptcp @ tcp connection control block that need initial
+ Output      : None
+ Return      : MIP_OK @ init ok, other value means failed.
+ *****************************************************************************/
+static int los_mip_conn_init_tcpctl(struct tcp_ctl *ptcp, struct mip_conn *con)
+{
+    if (NULL == ptcp)
+    {
+        return -MIP_ERR_PARAM;
+    }
+    memset(ptcp, 0, sizeof(struct tcp_ctl));
+    
+    /* todo: need give the timer callback function pointer */
+    ptcp->tmr = los_mip_create_swtimer(MIP_TCP_INTERNAL_TIMEOUT,
+                                       los_mip_tcp_timer_callback, (u32_t)con);
+    if (los_mip_is_valid_timer(ptcp->tmr) != MIP_TRUE)
+    {
+        return -MIP_TCP_TMR_OPS_ERR;
+    }
+    los_mip_start_timer(ptcp->tmr);
+    ptcp->state = TCP_INITIAL;
+    ptcp->isn = los_mip_tcp_gen_isn();
+    ptcp->swnd = LOS_MIP_TCP_WIND_SIZE;
+    ptcp->unsndsize = 0;
+    ptcp->mss = 0;                  /* remote endpoint's mss value */
+    ptcp->localmss = MIP_TCP_MSS;   /* local device's mss value */
+    ptcp->lastack = 0;
+    ptcp->rcv_nxt = 0;
+    ptcp->snd_nxt = ptcp->isn;
+    return MIP_OK;
+}
+
+/*****************************************************************************
+ Function    : los_mip_conn_deinit_tcpctl
+ Description : deinit tcp connection control block by default value 
+ Input       : ptcp @ tcp connection control block that need initial
+ Output      : None
+ Return      : MIP_OK @ deinit ok, other value means failed.
+ *****************************************************************************/
+static int los_mip_conn_deinit_tcpctl(struct tcp_ctl *ptcp)
+{
+    struct skt_acpt_msg *msgs = NULL;
+    struct mip_tcp_seg *tmp = NULL;
+    struct netbuf   *pbuf = NULL;
+    if (NULL == ptcp)
+    {
+        return -MIP_ERR_PARAM;
+    }
+    
+    if (los_mip_is_valid_timer(ptcp->tmr) == MIP_TRUE)
+    {
+         los_mip_stop_timer(ptcp->tmr);
+         los_mip_delete_timer(ptcp->tmr);
+    }
+    if (los_mip_mbox_valid(&ptcp->acptmbox) == MIP_TRUE)
+    {
+        while (MIP_OK == los_mip_mbox_tryfetch(&ptcp->acptmbox, (void **)&msgs))
+        {
+            /* maybe destroy by its self, if socket not -1 not destoryed yet */
+            if (msgs->con->socket != -1)
+            {
+                /* need destroy itsself */
+                los_mip_delete_conn(msgs->con);
+            }
+            msgs->con = NULL;
+            /* free message's self */
+            los_mpools_free(MPOOL_MSGS, msgs);
+            msgs = NULL;
+        }
+    }
+    while(ptcp->unacked != NULL)
+    {
+        tmp = ptcp->unacked;
+        ptcp->unacked = ptcp->unacked->next;
+        los_mip_tcp_delte_seg(tmp);
+        tmp = NULL;
+    }
+    while(ptcp->unsend != NULL)
+    {
+        pbuf = ptcp->unsend;
+        ptcp->unsend = ptcp->unsend->next;
+        netbuf_free(pbuf);
+        pbuf = NULL;
+    }
+    while(ptcp->recievd != NULL)
+    {
+        tmp = ptcp->recievd;
+        ptcp->recievd = ptcp->recievd->next;
+        los_mip_tcp_delte_seg(tmp);
+        tmp = NULL;
+    }
+    memset(ptcp, 0, sizeof(struct tcp_ctl));
+    return MIP_OK;
+}
+
+/*****************************************************************************
  Function    : los_mip_new_conn
  Description : new a connection and associate a socket with the the connection 
  Input       : type @ the connection type , like udp, tcp ...
@@ -249,11 +401,13 @@ struct mip_conn *los_mip_new_conn(enum conn_type type)
         case CONN_UDP:
             pad = sizeof(struct udp_ctl);
             break;
+        case CONN_TCP:
+            pad = sizeof(struct tcp_ctl);
+            break;
         default:
             break;
     }
     tmp = (struct mip_conn *)los_mpools_malloc(MPOOL_SOCKET, sizeof(struct mip_conn) + pad);
-    //g_sockets[i] = (struct mip_conn *)los_mpools_malloc(MPOOL_SOCKET, sizeof(struct mip_conn) + pad);
     if (NULL != tmp)
     {
         memset(tmp, 0, sizeof(struct mip_conn) + pad);
@@ -264,12 +418,6 @@ struct mip_conn *los_mip_new_conn(enum conn_type type)
             //recvmbox box create failed
             while(1);
         }
-        //to do it while listening the connection
-//        if(los_mip_mbox_new(&g_sockets[i]->acceptmbox, MIP_CONN_ACPTBOX_SIZE) != MIP_OK) 
-//        {
-//            //acceptmbox create failed
-//            while(1);
-//        }
         tmp->recv_timeout = 0xffffffffU;
         tmp->rcvcnt = 0;
         los_mip_sem_new(&tmp->op_finished, 1);
@@ -279,6 +427,9 @@ struct mip_conn *los_mip_new_conn(enum conn_type type)
             case CONN_UDP:
                 tmp->ctlb.udp = (struct udp_ctl *)((u8_t *)tmp + sizeof(struct mip_conn));
                 break;
+            case CONN_TCP:
+                tmp->ctlb.tcp = (struct tcp_ctl *)((u8_t *)tmp + sizeof(struct mip_conn));
+                los_mip_conn_init_tcpctl(tmp->ctlb.tcp, tmp);
             default:
                 break;
         }
@@ -286,6 +437,83 @@ struct mip_conn *los_mip_new_conn(enum conn_type type)
     g_sockets[i].con = tmp;
     return g_sockets[i].con;
 }
+
+/*****************************************************************************
+ Function    : los_mip_clone_conn
+ Description : clone a connection from tcp listen connection 
+ Input       : tcpcon @ tcp listen connection's pointer
+               rip @ new connection's remote ip address
+               rport @ new connection's remote port number
+ Output      : None
+ Return      : mip_conn * @ the new connection's pointer
+ *****************************************************************************/
+struct mip_conn *los_mip_clone_conn(struct mip_conn *tcpcon, ip_addr_t dst,
+                                    ip_addr_t rip, u16_t rport)
+{
+    int i = 0;
+    int pad = 0;
+    struct mip_conn *tmp = NULL;
+//    int len = 0;
+    
+    if ((NULL == tcpcon) || (tcpcon->type != CONN_TCP))
+    {
+        return NULL;
+    }
+    for (i = 0; i < MIP_CONN_MAX; i++)
+    {
+        if (NULL == g_sockets[i].con)
+        {
+            break;
+        }
+    }
+    if (i == MIP_CONN_MAX)
+    {
+        return NULL;
+    }
+//    len = sizeof(struct mip_conn);
+    
+    pad = sizeof(struct tcp_ctl);
+    tmp = (struct mip_conn *)los_mpools_malloc(MPOOL_SOCKET, sizeof(struct mip_conn) + pad);
+    if (NULL != tmp)
+    {
+        memset(tmp, 0, sizeof(struct mip_conn) + pad);
+        tmp->listen = tcpcon;
+        tmp->socket = i;
+        tmp->type = tcpcon->type;
+        if(los_mip_mbox_new(&tmp->recvmbox, MIP_CONN_RCVBOX_SIZE) != MIP_OK) 
+        {
+            //recvmbox box create failed
+            while(1);
+        }
+        tmp->recv_timeout = 0xffffffffU;
+        tmp->rcvcnt = 0;
+        los_mip_sem_new(&tmp->op_finished, 1);
+        los_mip_sem_wait(&tmp->op_finished, 0);
+        tmp->ctlb.tcp = (struct tcp_ctl *)((u8_t *)tmp + sizeof(struct mip_conn));
+        if (los_mip_conn_init_tcpctl(tmp->ctlb.tcp, tmp) != MIP_OK)
+        {
+            los_mip_mbox_free(&tmp->recvmbox);
+            los_mip_sem_free(&tmp->op_finished);
+            los_mpools_free(MPOOL_SOCKET, tmp);
+            tmp = NULL;
+            return NULL;
+        }
+        if (tcpcon->ctlb.tcp->localip.addr == INADDR_ANY)
+        {
+            tmp->ctlb.tcp->localip.addr = dst.addr;
+        }
+        else
+        {
+            tmp->ctlb.tcp->localip.addr = tcpcon->ctlb.tcp->localip.addr;
+        }
+        tmp->ctlb.tcp->lport = tcpcon->ctlb.tcp->lport;
+        tmp->ctlb.tcp->remote_ip.addr = rip.addr;
+        tmp->ctlb.tcp->rport = rport;
+    }
+    g_sockets[i].con = tmp;
+    return g_sockets[i].con;
+}
+
 
 /*****************************************************************************
  Function    : los_mip_lock_socket
@@ -424,6 +652,7 @@ int los_mip_delete_conn(struct mip_conn *con)
     }
     socket = con->socket;
     g_sockets[con->socket].con = NULL;
+    con->socket = -1;
     while (MIP_OK == los_mip_mbox_tryfetch(&con->recvmbox, (void **)&msgs))
     {
         netbuf_free(msgs->p);
@@ -432,6 +661,11 @@ int los_mip_delete_conn(struct mip_conn *con)
         msgs = NULL;
     }
     los_mip_mbox_free(&con->recvmbox);
+    if (con->type == CONN_TCP)
+    {
+        los_mip_conn_deinit_tcpctl(con->ctlb.tcp);
+        con->ctlb.tcp = NULL;
+    }
     //todo if any msgs in acceptmbox
     //los_mip_mbox_free(&con->acceptmbox);
     los_mip_sem_free(&con->op_finished);
@@ -479,7 +713,10 @@ int los_mip_conn_snd(struct skt_msg_dat *data)
     switch (data->con->type)
     {
         case CONN_UDP:
-            ret = los_mip_udp_output(data->con->ctlb.udp, data->p, &data->con->ctlb.udp->remote_ip, data->con->ctlb.udp->rport); 
+            ret = los_mip_udp_output(data->con->ctlb.udp, 
+                                     data->p, 
+                                     &data->con->ctlb.udp->remote_ip, 
+                                     data->con->ctlb.udp->rport); 
             break;
         case CONN_TCP: 
             break;
@@ -663,6 +900,60 @@ int los_mip_snd_sktmsg(struct mip_conn *con, struct netbuf *buf)
 }
 
 /*****************************************************************************
+ Function    : los_mip_new_acptmsg
+ Description : create a accept message 
+ Input       : con @ connection's pointer
+ Output      : None
+ Return      : msg @ accept message's pointer, if failed  return NULL
+ *****************************************************************************/
+struct skt_acpt_msg *los_mip_new_acptmsg(struct mip_conn *con)
+{
+    struct skt_acpt_msg *msg = NULL;
+    if (NULL == con)
+    {
+        return NULL;
+    }
+    msg = (struct skt_acpt_msg *)los_mpools_malloc(MPOOL_MSGS, 
+                                                   sizeof(struct skt_acpt_msg));
+    if (NULL == msg)
+    {
+        return NULL;
+    }
+    memset(msg, 0, sizeof(struct skt_acpt_msg));
+    msg->con = con;
+    
+    return msg;
+}
+
+/*****************************************************************************
+ Function    : los_mip_snd_acptmsg_to_listener
+ Description : send accept message to listen socket.
+ Input       : listener @ listern connection's pointer
+               msg @ the recived message's pointer
+ Output      : None
+ Return      : MIP_OK send ok, other value means failed.
+ *****************************************************************************/
+int los_mip_snd_acptmsg_to_listener(struct mip_conn *listener, 
+                                    struct skt_acpt_msg *msg)
+{
+    if ((NULL == listener) || (NULL == msg))
+    {
+        return -MIP_ERR_PARAM;
+    }
+    if (listener->state != STAT_LISTEN)
+    {
+        /* not listen connection */
+        return -MIP_ERR_PARAM;
+    }
+    if (los_mip_mbox_trypost(&listener->ctlb.tcp->acptmbox, msg) != MIP_OK) 
+    {
+        return -MIP_OSADP_MSGPOST_FAILED;
+    }
+    
+    return MIP_OK;
+}
+
+/*****************************************************************************
  Function    : los_mip_snd_msg_to_con
  Description : send recived message to connection.
  Input       : con @ connection's pointer
@@ -670,7 +961,7 @@ int los_mip_snd_sktmsg(struct mip_conn *con, struct netbuf *buf)
  Output      : None
  Return      : MIP_OK send ok, other value means failed.
  *****************************************************************************/
-int los_mip_snd_msg_to_con(struct mip_conn *con, struct skt_rcvd_msg *msg)
+int los_mip_snd_msg_to_con(struct mip_conn *con, void *msg)
 {
     if ((NULL == con) || (NULL == msg))
     {
@@ -778,6 +1069,561 @@ int los_mip_udp_bind(struct udp_ctl *udpctl, u32_t *dst_ip, u16_t dst_port)
     /* note there are some bugs, for ipv6 */
     udpctl->localip.addr = *dst_ip;
     udpctl->lport = dst_port;
+    
+    return MIP_OK;
+}
+
+/*****************************************************************************
+ Function    : los_mip_conn_bind
+ Description : do bind function. set the ip and port which the conneciotn
+               will bind.
+ Input       : mip_conn @ connection's pointer
+               dst_ip @ ip address the udp connection will bind
+               dst_port @ port number the udp connection will bind
+ Output      : None
+ Return      : MIP_OK bind process ok. other value means error happened.
+ *****************************************************************************/
+int los_mip_conn_bind(struct mip_conn *conn, u32_t *dst_ip, u16_t dst_port)
+{
+    if ((NULL == conn) || (NULL == dst_ip))
+    {
+         return -MIP_ERR_PARAM;
+    }
+    if (MIP_TRUE == los_mip_port_is_used(dst_port))
+    {
+        return -MIP_CON_PORT_ALREADY_USED;
+    }
+    if (MIP_OK != los_mip_add_port_to_used_list(dst_port))
+    {
+        return -MIP_CON_PORT_RES_USED_OUT;
+    }
+    if (conn->type == CONN_TCP)
+    {
+        /* note there are some bugs, for ipv6 */
+        conn->ctlb.tcp->localip.addr = *dst_ip;
+        conn->ctlb.tcp->lport = dst_port;
+    }
+    if (conn->type == CONN_UDP)
+    {
+        /* note there are some bugs, for ipv6 */
+        conn->ctlb.udp->localip.addr = *dst_ip;
+        conn->ctlb.udp->lport = dst_port;
+    }
+    return MIP_OK;
+}
+/*****************************************************************************
+ Function    : los_mip_con_new_tcp_msg
+ Description : create a tcp message.
+ Input       : mip_conn @ connection's pointer
+               type @ tcp message type for operation
+ Output      : None
+ Return      : msg @ the tcp message's pointer. if failed return NULL
+ *****************************************************************************/
+static struct skt_tcp_msg* los_mip_con_new_tcp_msg(struct mip_conn *conn, 
+                                                   enum tcp_msg_type type)
+{
+    struct skt_tcp_msg* msg = NULL;
+    msg = (struct skt_tcp_msg*)los_mpools_malloc(MPOOL_MSGS, 
+                                                 sizeof(struct skt_tcp_msg));
+    if (NULL != msg)
+    {
+        msg->con = conn;
+        msg->type = type;
+    }
+    return msg;
+}
+
+/*****************************************************************************
+ Function    : los_mip_con_send_tcp_msg
+ Description : send tcp message to tcp/ip core task. the core task will call 
+               tcp function to do connect, close, send ....
+ Input       : mip_conn @ connection's pointer
+               type @ tcp message type that indicate the function that need
+               to call.
+ Output      : None
+ Return      : MIP_OK send message ok. other value means error happened.
+ *****************************************************************************/
+int los_mip_con_send_tcp_msg(struct mip_conn *conn, enum tcp_msg_type type)
+{
+    struct skt_tcp_msg* msg = NULL;
+    struct mip_msg *mipmsg = NULL;
+
+    if (NULL == conn)
+    {
+        return -MIP_ERR_PARAM;
+    }
+    msg = los_mip_con_new_tcp_msg(conn, type); 
+    if (NULL == msg)
+    {
+        return -MIP_CON_NEW_MSG_FAILED;
+    }
+    
+    mipmsg = (struct mip_msg *)los_mpools_malloc(MPOOL_MSGS, sizeof(struct mip_msg));
+    if (mipmsg == NULL) 
+    {
+        los_mpools_free(MPOOL_MSGS, msg);
+        msg = NULL;
+        return -MIP_MPOOL_MALLOC_FAILED;
+    }
+    memset(mipmsg, 0, sizeof(struct mip_msg));
+    mipmsg->type = TCPIP_MSG_TCP;
+    mipmsg->msg.tcpmsg = msg;
+    conn->cur_msg = mipmsg;
+    
+    if (los_mip_tcpip_snd_msg(mipmsg) != MIP_OK) 
+    {
+        /* send delete connection msg failed */
+        los_mpools_free(MPOOL_MSGS, msg);
+        los_mpools_free(MPOOL_MSGS, mipmsg);
+        msg = NULL;
+        mipmsg = NULL;
+        return -MIP_OSADP_MSGPOST_FAILED;
+    }
+    
+    return MIP_OK;
+}
+
+/*****************************************************************************
+ Function    : los_mip_do_connect
+ Description : do connect function. set remote ip and port which the conneciotn
+               will connect to.
+ Input       : mip_conn @ connection's pointer
+               dst_ip @ ip address the udp connection will bind
+               dst_port @ port number the udp connection will bind
+ Output      : None
+ Return      : MIP_OK connect process ok. other value means error happened.
+ *****************************************************************************/
+int los_mip_do_connect(struct mip_conn *conn, u32_t *dst_ip, u16_t dst_port)
+{
+    int sret = 0;
+    u32_t ret = 0;
+    if ((NULL == conn) || (NULL == dst_ip))
+    {
+         return -MIP_ERR_PARAM;
+    }
+    conn->state = STAT_CONNECT;
+    if (conn->type == CONN_TCP)
+    {
+        /* note there are some bugs, for ipv6 */
+        if (conn->ctlb.tcp->remote_ip.addr == INADDR_ANY)
+        {
+            conn->ctlb.tcp->remote_ip.addr = *dst_ip;
+            conn->ctlb.tcp->rport = dst_port;
+        }
+        /* send syn message out to do tcp connect process */
+        sret = los_mip_con_send_tcp_msg(conn, TCP_CONN);
+        if (sret != MIP_OK)
+        {
+            /* send connect message to core failed */
+            return -1;
+        }
+        ret = los_mip_sem_wait(&conn->op_finished, conn->recv_timeout);
+        if (ret == MIP_OS_TIMEOUT)
+        {
+            /* connect failed */
+            return -1;
+        }
+        if (conn->ctlb.tcp->state != TCP_ESTABLISHED)
+        {
+            /* connect failed */
+            return -1;
+        }
+    }
+    if (conn->type == CONN_UDP)
+    {
+        /* note there are some bugs, for ipv6 */
+        conn->ctlb.udp->remote_ip.addr = *dst_ip;
+        conn->ctlb.udp->rport = dst_port;
+    }
+    return MIP_OK;
+}
+
+/*****************************************************************************
+ Function    : los_mip_tcp_listen
+ Description : create tcp connect listen resources.
+ Input       : mip_conn @ tcp connection's pointer
+               backlog @ limit the number of outstanding connections 
+               in the socket's listen queue
+ Output      : None
+ Return      : MIP_OK listen process ok. other value means error happened.
+ *****************************************************************************/
+int los_mip_tcp_listen(struct mip_conn *conn, int backlog)
+{
+    if ((NULL == conn) || (backlog < 0))
+    {
+        return -MIP_ERR_PARAM;
+    }
+    conn->state = STAT_LISTEN;
+    if(los_mip_mbox_new(&conn->ctlb.tcp->acptmbox, backlog) != MIP_OK)
+    {
+        /* acceptmbox create failed */
+        return -MIP_TCP_LISTEN_MBOX_ERR;
+    }
+    return MIP_OK;
+}
+
+/*****************************************************************************
+ Function    : los_mip_tcp_shut_slide_wnd
+ Description : shutdown the sliding window
+ Input       : mip_conn @ tcp connection's pointer
+ Output      : None
+ Return      : MIP_OK @ process ok. other value means error happened.
+ *****************************************************************************/
+static inline int los_mip_tcp_shut_slide_wnd(struct mip_conn *conn)
+{
+    if (NULL == conn || NULL == conn->ctlb.tcp)
+    {
+        return -MIP_ERR_PARAM;
+    }
+    /* todo: need do resources protect */
+    conn->ctlb.tcp->swnd = LOS_MIP_TCP_WIND_SIZE;
+    return MIP_OK;
+}
+/*****************************************************************************
+ Function    : los_mip_tcp_wait_closed
+ Description : wait the connetion's state changed to closed.
+ Input       : mip_conn @ tcp connection's pointer
+ Output      : None
+ Return      : MIP_OK @ process ok. other value means error happened.
+ *****************************************************************************/
+static inline int los_mip_tcp_wait_closed(struct mip_conn *conn, u32_t timeout)
+{
+    int retry = timeout / 5;
+    if (NULL == conn || NULL == conn->ctlb.tcp)
+    {
+        return -MIP_ERR_PARAM;
+    }
+    if (!retry)
+    {
+        retry = 1;
+    }
+    while(conn->ctlb.tcp->state != TCP_CLOSED)
+    {
+        los_mip_delay(5);
+        retry--;
+        if (retry == 0)
+        {
+            break;
+        }
+    }
+    return MIP_OK;
+}
+/*****************************************************************************
+ Function    : los_mip_tcp_close
+ Description : close a tcp connection.
+ Input       : mip_conn @ tcp connection's pointer
+ Output      : None
+ Return      : MIP_OK process ok. other value means error happened.
+ *****************************************************************************/
+int los_mip_tcp_close(struct mip_conn *conn)
+{
+    u32_t ret = 0;
+    if (NULL == conn || NULL == conn->ctlb.tcp)
+    {
+        return -MIP_ERR_PARAM;
+    }
+    /*
+        1: make receive sliding windows empty 
+        2: discard all send buf's data.
+        3: send fin message. 
+        4: wait connetion state to closed.
+        5: release connection's memory
+    */
+    los_mip_tcp_shut_slide_wnd(conn);
+    los_mip_con_send_tcp_msg(conn, TCP_CLOSE);
+    /* wait 100ms for tcp changed to closed */
+    los_mip_tcp_wait_closed(conn, 100);
+    los_mip_lock_socket(conn->socket);
+    ret = los_mip_snd_delmsg(conn);
+    return ret;
+}
+
+/*****************************************************************************
+ Function    : los_mip_tcp_read
+ Description : read data from tcp receive buffer.
+ Input       : mip_conn @ tcp connection's pointer
+               mem @ the buffer that store the read data
+               len @ the length that user want to read 
+ Output      : None
+ Return      : copylen @ the data length that read out from the tcp buffer.
+               if connection is closed , return -1, if no data return 0
+ *****************************************************************************/
+int los_mip_tcp_read(struct mip_conn *conn, void *mem, size_t len)
+{
+    mip_mbox_t *recvmbox = NULL;
+    int recv_timeout = 0;
+    void *tcpmsgs = NULL;
+    struct mip_tcp_seg *head = NULL;
+    struct mip_tcp_seg *next = NULL;
+    int ret = 0;
+    int copylen = 0;
+    
+    if ((NULL == conn) || (NULL == mem))
+    {
+        return -MIP_ERR_PARAM;
+    }
+    if(conn->ctlb.tcp->state == TCP_CLOSED)
+    {
+        /* todo: should set errno that connection closed */
+        return -1;
+    }
+    recvmbox = &conn->recvmbox;
+    recv_timeout = conn->recv_timeout;
+    
+    if (MIP_TRUE == los_mip_conn_is_nonblocking(conn))
+    {
+        ret = los_mip_mbox_fetch(recvmbox, (void **)&tcpmsgs, 1);
+    }
+    else
+    {
+        ret = los_mip_mbox_fetch(recvmbox, (void **)&tcpmsgs, recv_timeout);
+    }
+    if (MIP_OK != ret)
+    {
+        /* fetch message box error */
+        return copylen;
+    }
+    head = (struct mip_tcp_seg *)tcpmsgs;
+    if (NULL == head)
+    {
+       /* this means connection closed interal, we need return -1*/
+       copylen = -1;
+    }
+    else
+    {
+        if (len < head->len)
+        {
+            copylen = len;
+            memcpy(mem, head->p->payload, copylen);
+            head->p->payload = (u8_t *)head->p->payload + len;
+            head->p->len -= len;
+            head->len -= len;
+        }
+        else
+        {
+            copylen = 0;
+            while ((NULL != head) && copylen < len)
+            {
+                if (copylen + head->len > len)
+                {
+                    memcpy((u8_t *)mem + copylen, head->p->payload, len - copylen);
+                    head->len -= (len - copylen); 
+                    head->p->len -= (len - copylen); 
+                    copylen = len;
+                }
+                else
+                {
+                    next = head->next;
+                    memcpy((u8_t *)mem + copylen, head->p->payload, head->len);
+                    copylen += head->len;
+                    /* free the read out segment's buffer */
+                    los_mip_tcp_delte_seg(head);
+                    head = next;
+                    conn->ctlb.tcp->recievd = next;
+                }
+            }
+
+        }
+        /* todo: need do some protect */
+        conn->ctlb.tcp->swnd += copylen;
+        /* todo: maybe need tell remote the slide window changed */
+    }
+    return copylen;
+}
+
+/*****************************************************************************
+ Function    : los_mip_tcp_write_partly
+ Description : write a part of user's data to tcp send buffer.
+ Input       : mip_conn @ tcp connection's pointer
+               mem @ data's address
+               len @ the data length that stored in the mem buffer. 
+ Output      : None
+ Return      : cpylen @ the copyed data length.
+ *****************************************************************************/
+static int los_mip_tcp_write_partly(struct mip_conn *conn, const void *mem, 
+                                    size_t len)
+{
+    int cpylen = 0;
+    struct netbuf *tmp = NULL;
+    struct netbuf *tail = NULL;
+    /*get the min segment size */
+    tmp = netbuf_alloc(NETBUF_RAW, len);
+    if (NULL != tmp)
+    {
+        cpylen = len;
+        memcpy(tmp->payload, mem, len);
+        tmp->len = len;
+        tail = conn->ctlb.tcp->unsend;
+        if (NULL == tail)
+        {
+            conn->ctlb.tcp->unsend = tmp;
+        }
+        else
+        {
+            while(NULL != tail->next)
+            {
+                tail = tail->next;
+            }
+            tail->next = tmp;
+        }
+        tmp->next = NULL;
+    }
+    return cpylen;
+}
+
+/*****************************************************************************
+ Function    : los_mip_tcp_write
+ Description : write data to tcp send buffer.
+ Input       : mip_conn @ tcp connection's pointer
+               mem @ data's address
+               len @ the data length that stored in the mem buffer. 
+ Output      : None
+ Return      : wlen @ the real length that write to the send buffer.
+ *****************************************************************************/
+int los_mip_tcp_write(struct mip_conn *conn, const void *mem, size_t len)
+{
+    int wlen = 0;
+    int ret = 0;
+    int tmpwr = 0;
+    int tmpunsnd = 0;
+    char *tmpmem = NULL;
+    if ((NULL == conn) || (NULL == mem)
+        || (NULL == conn->ctlb.tcp))
+    {
+        return -MIP_ERR_PARAM;
+    }
+    /* copy the data to tcp send buffer */
+    if (MIP_TRUE != los_mip_conn_is_nonblocking(conn))
+    {
+        /* block mode */
+        while(tmpwr < len)
+        {
+            /* todo: need do some protect for the unsndsize */
+            tmpunsnd = conn->ctlb.tcp->unsndsize;
+            if (tmpunsnd < LOS_MIP_TCP_SND_BUF_SIZE)
+            {
+                /* copy part data to send buffer */
+                wlen = LOS_MIP_TCP_SND_BUF_SIZE - tmpunsnd;
+                tmpmem = (char *)mem + tmpwr;
+                if (len > wlen)
+                {
+                    ret = los_mip_tcp_write_partly(conn, tmpmem, wlen);
+                }
+                else
+                {
+                    wlen = len;
+                    ret = los_mip_tcp_write_partly(conn, tmpmem, wlen);
+                }
+                if (ret != wlen)
+                {
+                    /* error happend need wait some timer */
+                    wlen = ret;
+                    los_mip_delay(10);
+                }
+                /* update the un-send data length */
+                conn->ctlb.tcp->unsndsize += wlen;
+                tmpwr += wlen;
+            }
+            else
+            {
+                /* no space for data send , sleep some time and */
+                los_mip_delay(10);
+            }
+        }
+        wlen = len;
+    }
+    else
+    {
+        /* non-block mode */
+        /* todo: need do some protect for the unsndsize */
+        tmpunsnd = conn->ctlb.tcp->unsndsize;
+        if (tmpunsnd < LOS_MIP_TCP_SND_BUF_SIZE)
+        {
+            /* copy part data to send buffer */
+            wlen = LOS_MIP_TCP_SND_BUF_SIZE - tmpunsnd;
+            if (len > wlen)
+            {
+                ret = los_mip_tcp_write_partly(conn, mem, wlen);
+            }
+            else
+            {
+                wlen = len;
+                ret = los_mip_tcp_write_partly(conn, mem, wlen);
+            }
+            //ret = los_mip_tcp_write_partly(conn, mem, wlen);
+            if (ret != wlen)
+            {
+                wlen = ret;
+            }
+            /* update the un-send data length */
+            conn->ctlb.tcp->unsndsize += wlen;
+        }
+        else
+        {
+            /* no space for data send , should return 0*/
+        }
+    }
+    if (wlen)
+    {
+        /* tell tcp stack to send data */
+        los_mip_con_send_tcp_msg(conn, TCP_SEND);
+    }
+    return wlen;
+}
+
+/*****************************************************************************
+ Function    : los_mip_tcp_nagle_enable
+ Description : enable nagle algorithm.
+ Input       : mip_conn @ tcp connection's pointer
+ Output      : None
+ Return      : MIP_OK @ process ok, other value means failed.
+ *****************************************************************************/
+int los_mip_tcp_nagle_enable(struct mip_conn *conn)
+{
+    if ((NULL == conn) || (NULL == conn->ctlb.tcp))
+    {
+        return -MIP_ERR_PARAM;
+    }
+    conn->ctlb.tcp->flag |= TCP_NODELAY;
+    return MIP_OK;
+}
+
+/*****************************************************************************
+ Function    : los_mip_tcp_nagle_disable
+ Description : disable nagle algorithm.
+ Input       : mip_conn @ tcp connection's pointer
+ Output      : None
+ Return      : MIP_OK @ process ok, other value means failed.
+ *****************************************************************************/
+int los_mip_tcp_nagle_disable(struct mip_conn *conn)
+{
+    if ((NULL == conn) || (NULL == conn->ctlb.tcp))
+    {
+        return -MIP_ERR_PARAM;
+    }
+    conn->ctlb.tcp->flag &= ~TCP_NODELAY;
+    return MIP_OK;
+}
+
+/*****************************************************************************
+ Function    : los_mip_tcp_do_shutdown
+ Description : shutdown the connection's read/write .
+ Input       : mip_conn @ tcp connection's pointer
+               how @ the type of shutdown
+ Output      : None
+ Return      : MIP_OK @ process ok, other value means failed.
+ *****************************************************************************/
+int los_mip_tcp_do_shutdown(struct mip_conn *conn, int how)
+{
+//    int shutrx = 0;
+//    int shutwr = 0;
+    
+    if ((NULL == conn) || (NULL == conn->ctlb.tcp))
+    {
+        return -MIP_ERR_PARAM;
+    }
+//    shutrx = how & MIP_SHUT_RD;
+//    shutwr = how & MIP_SHUT_WR;
     
     return MIP_OK;
 }

@@ -41,6 +41,7 @@ typedef enum {
 	MPOOL_NETBUF,
     MPOOL_MSGS,
     MPOOL_SOCKET,
+    MPOOL_TCP,
 	MPOOL_MAX
 }mpool_t;
 

@@ -99,7 +99,7 @@ static int los_mip_wmsgs_add_msg(struct mip_msg *msgs)
     {
         g_arp_wmsgs_h = &g_arp_w_array[i];
         g_arp_wmsgs_h->msg = msgs;
-        g_arp_wmsgs_h->storetm = osKernelSysTick();
+        g_arp_wmsgs_h->storetm = los_mip_cur_tm();
         g_arp_wmsgs_t = g_arp_wmsgs_h;
     }
     else
@@ -108,7 +108,7 @@ static int los_mip_wmsgs_add_msg(struct mip_msg *msgs)
         g_arp_wmsgs_t = &g_arp_w_array[i];
         
         g_arp_wmsgs_t->msg = msgs;
-        g_arp_wmsgs_t->storetm = osKernelSysTick();
+        g_arp_wmsgs_t->storetm = los_mip_cur_tm();
         g_arp_wmsgs_t->next = NULL;
     }
     
@@ -248,7 +248,7 @@ static void los_mip_tcpip_task(void *arg)
     
     while (1)
     {
-        curtm = osKernelSysTick();
+        curtm = los_mip_cur_tm();
         msgtm = los_mip_get_wmsgs_head_tm();
         if ((msgtm != 0)
             && ((curtm - msgtm) >= 20))
@@ -327,6 +327,13 @@ static void los_mip_tcpip_task(void *arg)
                     /* tell up layer send finished */
                     los_mip_sem_signal(msgs->msg.conmsg->data.op_finished);
                 }
+                break;
+            case TCPIP_MSG_TCP:
+                los_mip_tcp_process_upper_msg(msgs->msg.tcpmsg);
+                los_mpools_free(MPOOL_MSGS, msgs->msg.tcpmsg);
+                msgs->msg.tcpmsg = NULL;
+                los_mpools_free(MPOOL_MSGS, msgs);
+                msgs = NULL;
                 break;
             default:
                 break;

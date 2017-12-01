@@ -74,13 +74,18 @@ typedef struct fd_set
 #define  SO_REUSEADDR   0x0004 /* Unimplemented: Allow local address reuse */
 #define  SO_KEEPALIVE   0x0008 /* Unimplemented: keep connections alive */
 #define  SO_DONTROUTE   0x0010 /* Unimplemented: Unimplemented: just use interface addresses */
-#define  SO_BROADCAST   0x0020 /* Unimplemented: permit to send and to receive broadcast messages (see IP_SOF_BROADCAST option) */
+#define  SO_BROADCAST   0x0020 /* Unimplemented: permit to send and to receive broadcast
+                                  messages (see IP_SOF_BROADCAST option) */
 #define  SO_USELOOPBACK 0x0040 /* Unimplemented: Unimplemented: bypass hardware when possible */
 #define  SO_LINGER      0x0080 /* Unimplemented: linger on close if data present */
 #define  SO_OOBINLINE   0x0100 /* Unimplemented: Unimplemented: leave received OOB data in line */
 #define  SO_REUSEPORT   0x0200 /* Unimplemented: Unimplemented: allow local address & port reuse */
 
 #define SO_DONTLINGER   ((int)(~SO_LINGER))
+
+#define SHUT_RD    MIP_SHUT_RD      /* disables further receive operations */
+#define SHUT_RDWR  MIP_SHUT_RDWR    /* disables further send and receive operations */
+#define SHUT_WR    MIP_SHUT_WR      /* disables further send operations */
 
 #define EPERM   1        /* Operation not permitted */
 
@@ -102,10 +107,15 @@ typedef struct fd_set
 #define F_SETFL     1
 #define O_NONBLOCK  1
 
+#define SOMAXCONN   (MIP_CONN_MAX - 1)  /* default max connection in accept box */
+#define SOMINCONN   1                   /* default min connection in accept box */
+
 #define MIP_SOCKET_SEL_MIN_TM 5
 
 int los_mip_socket(int domain, int type, int protocol);
 int los_mip_bind(int s, const struct sockaddr *name, socklen_t namelen);
+int los_mip_listen(int s, int backlog);
+int los_mip_connect(int s, const struct sockaddr *name, socklen_t namelen);
 int los_mip_accept(int s, struct sockaddr *addr, socklen_t *addrlen);
 int los_mip_sendto(int s, const void *data, size_t size, int flags,
             const struct sockaddr *to, socklen_t tolen);

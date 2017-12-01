@@ -25,6 +25,7 @@
 #include "los_mip_dhcp.h"
 #include "los_oclink_demo.h"
 
+
 struct netif g_stm32f746;
 
 static void los_config_network(void)
@@ -48,8 +49,85 @@ static void los_config_network(void)
     
     return ;
 }
+char testbuf[100] = {0};
+static UINT32 g_testtcp;
+LITE_OS_SEC_TEXT VOID los_mip_test_tcp(void)
+{
+    int test = 0;
+    int fd = -1;
+    int clientfd = -1; 
+    int port = 5000; 
+    int rport = 6000;
+    int clientlen = 0; 
+    struct sockaddr_in servaddr;  
+    struct sockaddr_in cliaddr; 
+    
+    fd = los_mip_socket(AF_INET, SOCK_STREAM, 0);
+    if (fd >= 0)
+    {
+        memset(&servaddr, 0, sizeof(servaddr));  
+        memset(&cliaddr, 0, sizeof(cliaddr));  
+        servaddr.sin_family = AF_INET;  
+        servaddr.sin_addr.s_addr = htonl(INADDR_ANY);  
+        servaddr.sin_port = htons((unsigned short)port);  
+        clientlen = sizeof(cliaddr); 
+        los_mip_bind(fd, (struct sockaddr*)&servaddr, sizeof(servaddr));
+        #if 1
+        cliaddr.sin_family = AF_INET;  
+        cliaddr.sin_addr.s_addr = inet_addr("192.168.137.1");  
+        cliaddr.sin_port = htons((unsigned short)rport); 
+        test = los_mip_connect(fd, (struct sockaddr*)&cliaddr, sizeof(cliaddr));
+        if (test != 0)
+        {
+            while(1);
+        }
+        while(test < 5)
+        {
+            test++;
+            testbuf[0] = test + 1;
+            testbuf[1] = test + 2;
+            testbuf[2] = test + 3;
+            testbuf[3] = test + 4;
+            testbuf[4] = test + 5;
+            los_mip_write(fd, testbuf, 5);
+            LOS_TaskDelay(500);
+        }
+        //LOS_TaskDelay(25000);
+        los_mip_close(fd);
+        //los_mip_read(fd, testbuf, 50);
+        #else
+        los_mip_listen(fd, 0);
+        memset(&cliaddr, 0, sizeof(cliaddr)); 
+        while(1)
+        {
+            clientfd = los_mip_accept(fd, (struct sockaddr*)&cliaddr, (socklen_t *)&clientlen);
+            if (clientfd >= 0)
+            {
+                test ++;
+            }
+        }
+        #endif
+    }
+}
 
+void los_mip_tcp_task(void)
+{
+	UINT32 uwRet;
+	TSK_INIT_PARAM_S stTaskInitParam;
 
+	(VOID)memset((void *)(&stTaskInitParam), 0, sizeof(TSK_INIT_PARAM_S));
+	stTaskInitParam.pfnTaskEntry = (TSK_ENTRY_FUNC)los_mip_test_tcp;
+	stTaskInitParam.uwStackSize = 1024;
+	stTaskInitParam.pcName = "tcptest";
+	stTaskInitParam.usTaskPrio = 10;
+	uwRet = LOS_TaskCreate(&g_testtcp, &stTaskInitParam);
+
+	if (uwRet != LOS_OK)
+	{
+		return ;
+	}
+	return ;
+}
 
 void SystemClock_Config(void)
 {
@@ -191,8 +269,9 @@ int main(void)
 
 
     los_config_network();
-	los_oclink_demo_start();
-
+    los_mip_tcp_task();
+//	los_oclink_demo_start();
+    
 	/* Kernel start to run */
 	LOS_Start();
 	for (;;);

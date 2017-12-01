@@ -314,7 +314,7 @@ int los_mip_ipv4_input(struct netbuf *p, struct netif *dev)
             ret = los_mip_udp_input(p, dev, &iph->src, &iph->dest); 
             break;
         case MIP_PRT_TCP:
-            delfalg = 1;
+            ret = los_mip_tcp_input(p, dev, &iph->src, &iph->dest);
             break;
         case MIP_PRT_ICMP:
             ret = los_mip_icmp_input(p, dev, &iph->src, &iph->dest);

@@ -715,3 +715,117 @@ void los_mip_delay(u32_t ms)
 {
     LOS_TaskDelay(ms);
 }
+
+/*****************************************************************************
+ Function    : los_mip_create_swtimer
+ Description : create a period timer. 
+ Input       : timeout @ the timeout value of the soft timer
+               callback @ the timeout callback function for the soft timer
+ Output      : None
+ Return      : id @ the timer id 
+ *****************************************************************************/
+mip_timer_t los_mip_create_swtimer(u32_t timeout, SWTMR_PROC_FUNC callback, 
+                                   u32_t args)
+{
+    UINT32 uwRet = LOS_OK;
+    mip_timer_t id = MIP_INVALID_TIMER;
+    
+    if (NULL == callback || 0 == timeout)
+    {
+        return id;
+    }
+    /* create a period soft timer */
+    uwRet = LOS_SwtmrCreate(timeout, LOS_SWTMR_MODE_PERIOD, callback, &id, args);
+    if(LOS_OK != uwRet)
+    {
+        id = MIP_INVALID_TIMER;
+    }
+    return id;
+}
+
+/*****************************************************************************
+ Function    : los_mip_is_valid_timer
+ Description : judge if the timer is valid. 
+ Input       : id @ soft timer id
+ Output      : None
+ Return      : MIP_TRUE @ timer is valid, MIP_FALSE timer is invalid 
+ *****************************************************************************/
+int los_mip_is_valid_timer(mip_timer_t id)
+{
+    if (id == MIP_INVALID_TIMER)
+    {
+        return MIP_FALSE;
+    }
+    return MIP_TRUE;
+}
+
+/*****************************************************************************
+ Function    : los_mip_start_timer
+ Description : start a timer by the timer id. 
+ Input       : id @ soft timer id
+ Output      : None
+ Return      : MIP_TRUE @ timer start ok, MIP_FALSE timer start failed 
+ *****************************************************************************/
+int los_mip_start_timer(mip_timer_t id)
+{
+    UINT32 uwRet = LOS_OK;
+    if (id == MIP_INVALID_TIMER)
+    {
+        return MIP_FALSE;
+    }
+    
+    uwRet = LOS_SwtmrStart(id);
+    if(LOS_OK != uwRet)
+    {
+        return MIP_FALSE;
+    }
+    return MIP_TRUE;
+}
+
+/*****************************************************************************
+ Function    : los_mip_stop_timer
+ Description : stop a timer by the timer id. 
+ Input       : id @ soft timer id
+ Output      : None
+ Return      : MIP_TRUE @ timer stop ok, MIP_FALSE timer stop failed 
+ *****************************************************************************/
+int los_mip_stop_timer(mip_timer_t id)
+{
+    UINT32 uwRet = LOS_OK;
+    
+    if (id == MIP_INVALID_TIMER)
+    {
+        return MIP_FALSE;
+    }
+    
+    uwRet = LOS_SwtmrStop(id);
+    if(LOS_OK != uwRet)
+    {
+        return MIP_FALSE;
+    }
+    return MIP_TRUE;
+}
+
+/*****************************************************************************
+ Function    : los_mip_delete_timer
+ Description : delete a timer by the timer id. 
+ Input       : id @ soft timer id
+ Output      : None
+ Return      : MIP_TRUE @ timer delete ok, MIP_FALSE timer delete failed 
+ *****************************************************************************/
+int los_mip_delete_timer(mip_timer_t id)
+{
+    UINT32 uwRet = LOS_OK;
+    
+    if (id == MIP_INVALID_TIMER)
+    {
+        return MIP_FALSE;
+    }
+    
+    uwRet = LOS_SwtmrDelete(id);
+    if(LOS_OK != uwRet)
+    {
+        return MIP_FALSE;
+    }
+    return MIP_TRUE;
+}

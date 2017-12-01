@@ -730,6 +730,11 @@
               <FileType>1</FileType>
               <FilePath>..\..\subsys\net\LosMIP\sys\los_mip_osfunc.c</FilePath>
             </File>
+            <File>
+              <FileName>los_mip_tcp.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\..\subsys\net\LosMIP\core\los_mip_tcp.c</FilePath>
+            </File>
           </Files>
         </Group>
         <Group>

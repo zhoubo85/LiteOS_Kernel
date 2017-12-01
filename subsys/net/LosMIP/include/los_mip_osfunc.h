@@ -53,12 +53,14 @@
 #define MIP_MAX_DELAY       0xffffffffUL
 #define MIP_OS_TIMEOUT      0xffffffffUL
 
+#define MIP_INVALID_TIMER   OS_SWTMR_MAX_TIMERID
+
 
 typedef UINT32 mip_mbox_t;
 typedef UINT32 mip_sem_t;
 typedef UINT32 mip_mutex_t;
 typedef UINT32 mip_thread_t;
-
+typedef UINT16 mip_timer_t;
 
 typedef int mip_prot_t;
 typedef void (*mip_thread_fn)(void *arg);
@@ -92,5 +94,12 @@ void los_mip_task_unlock(mip_prot_t pval);
 u32_t los_mip_cur_tm(void);
 u32_t los_mip_random(void);
 void los_mip_delay(u32_t ms);
+mip_timer_t los_mip_create_swtimer(u32_t timeout, 
+                                   SWTMR_PROC_FUNC callback, 
+                                   u32_t args);
+int los_mip_is_valid_timer(mip_timer_t id);
+int los_mip_start_timer(mip_timer_t id);
+int los_mip_stop_timer(mip_timer_t id);
+int los_mip_delete_timer(mip_timer_t id);
 #endif /* _LOS_MIP_OSFUNC_H */
 

@@ -122,7 +122,7 @@ int los_mip_udp_input(struct netbuf *p,
                             discardflag = 1;
                             break;
                         }
-                        ret = los_mip_snd_msg_to_con(tmpcon, upmsg);
+                        ret = los_mip_snd_msg_to_con(tmpcon, (void *)upmsg);
                         if (ret != MIP_OK)
                         {
                             los_mip_delete_up_sktmsg(upmsg);

@@ -37,8 +37,11 @@
 
 #define LOS_MPOOL_PKGBUF_SIZE   1024*4
 #define LOS_MPOOL_MSGS_SIZE     512
-#define LOS_MPOOL_SOCKET_SIZE   512
+#define LOS_MPOOL_SOCKET_SIZE   512*2
+#define LOS_MPOOL_TCP_SIZE      1024
 
+#define LOS_MIP_TCP_WIND_SIZE       512
+#define LOS_MIP_TCP_SND_BUF_SIZE    512
 /* mip resource(sockets number, arp table size ...) max size */
 #define MIP_RES_SIZE_MAX        6
 
@@ -52,6 +55,19 @@
 #define MIP_CONN_RCVBOX_SIZE    MIP_RES_SIZE_MAX
 #define MIP_CONN_ACPTBOX_SIZE   MIP_RES_SIZE_MAX
 
-#define MIP_HW_MTU_VLAUE        1500
+
+#define MIP_HW_MTU_VLAUE            1500
+/* tcp connection internal timer timeout value */
+#define MIP_TCP_INTERNAL_TIMEOUT    200
+/* fin_wait_2 default timeout value , it means 10*200ms */
+#define MIP_TCP_FIN_WAIT2_TIMEOUT   10
+/* persist default timeout value , it means 50*200ms */
+#define MIP_TCP_PERSIST_TIMEOUT   50
+
+/* 2MSL default timeout value , it means 300*200ms */
+#define MIP_TCP_2MSL_TIMEOUT   300
+
+/* tcp max segement size */
+#define MIP_TCP_MSS                 512
 
 #endif

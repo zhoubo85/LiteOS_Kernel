@@ -103,7 +103,7 @@ int los_mip_close(int s)
 {
     int ret = MIP_OK;
     struct mip_conn *con = NULL;
-    
+    int type = 0;
     if (s < 0)
     {
         return -MIP_ERR_PARAM;
@@ -114,9 +114,21 @@ int los_mip_close(int s)
     {
         return MIP_OK;
     }
-    los_mip_lock_socket(s);
-    ret = los_mip_snd_delmsg(con);
+    type = con->type;
     
+    los_mip_lock_socket(s);
+    switch(type)
+    {
+        case CONN_UDP:
+            ret = los_mip_snd_delmsg(con);
+            break;
+        case CONN_TCP:
+            ret = los_mip_tcp_close(con);
+            break;
+        default:
+            break;
+    }
+
     return ret;
 }
 
@@ -175,6 +187,21 @@ int los_mip_write(int s, const void *data, size_t size)
         /* udp can't use write function */
         return -1;
     }
+    if (CONN_TCP == con->type)
+    {
+        if ((con->ctlb.tcp->state == TCP_ESTABLISHED) 
+            || ((con->ctlb.tcp->state == TCP_CLOSE_WAIT)))
+        {
+            /* call tcp write function */
+            len = los_mip_tcp_write(con, data, size);
+        }
+        else
+        {
+            /* todo: tcp not established, should set errno */
+            return -1;
+        }
+
+    }
     /* todo: add tcp send code here */
     return len;
 }
@@ -219,6 +246,8 @@ int los_mip_recvfrom(int s, void *mem,
 {
     struct mip_conn *con = NULL;
     struct skt_rcvd_msg *msgs = NULL;
+//    void *tcpmsgs = NULL;
+//    struct mip_tcp_seg *head = NULL;
     int ret = MIP_OK;
     struct sockaddr_in in;
     size_t copylen = 0;
@@ -241,8 +270,7 @@ int los_mip_recvfrom(int s, void *mem,
     recvmbox = &con->recvmbox;
     recv_timeout = con->recv_timeout;
     type = con->type;
-
-
+    
     switch (type)
     {
         case CONN_UDP:
@@ -280,6 +308,7 @@ int los_mip_recvfrom(int s, void *mem,
             los_mip_delete_up_sktmsg(msgs);
             break;
         case CONN_TCP:
+            copylen = los_mip_tcp_read(con, mem, len);
             break;
         default:
             break;
@@ -311,20 +340,88 @@ int los_mip_bind(int s, const struct sockaddr *name, socklen_t namelen)
     {
         return -1;
     }
+    tmp = (struct sockaddr_in *)name;
+    /* todo: tcp udp need call the same function */
     switch (con->type)
     {
         case CONN_UDP:
             if (NULL != con->ctlb.udp)
             {
                 /* call udp bind, this is just for ipv4, ipv6 will bugs */
-                tmp = (struct sockaddr_in *)name;
-                los_mip_udp_bind(con->ctlb.udp, &tmp->sin_addr.s_addr, tmp->sin_port); 
+                ret = los_mip_udp_bind(con->ctlb.udp, &tmp->sin_addr.s_addr, tmp->sin_port); 
             }
             break;
+        case CONN_TCP:
+            /* call tcp bind, this is just for ipv4, ipv6 will bugs */
+            ret = los_mip_conn_bind(con, &tmp->sin_addr.s_addr, tmp->sin_port);
         default:
             break;
     }
     
+    return ret;
+}
+
+/*****************************************************************************
+ Function    : los_mip_bind
+ Description : compatible socket interface. bind socket to a local address
+ Input       : s @ socket's handle 
+               name @ local address data
+               namelen @ length of *name
+ Output      : None
+ Return      : ret @ 0 means bind ok, <0 means bind failed.
+ *****************************************************************************/
+int los_mip_connect(int s, const struct sockaddr *name, socklen_t namelen)
+{
+    int ret = 0;
+    struct sockaddr_in *tmp = NULL;
+    struct mip_conn *con = NULL;
+    
+    if ((s < 0) || (NULL == name))
+    {
+        return -MIP_ERR_PARAM;
+    }
+    con = los_mip_get_conn(s);
+    if (NULL == con)
+    {
+        return -1;
+    }
+    tmp = (struct sockaddr_in *)name;
+    ret = los_mip_do_connect(con, &tmp->sin_addr.s_addr, tmp->sin_port);
+    return ret;
+}
+
+/*****************************************************************************
+ Function    : los_mip_bind
+ Description : compatible socket interface. bind socket to a local address
+ Input       : s @ socket's handle 
+               name @ local address data
+               namelen @ length of *name
+ Output      : None
+ Return      : ret @ 0 means bind ok, <0 means bind failed.
+ *****************************************************************************/
+int los_mip_listen(int s, int backlog)
+{
+    int ret = 0;
+    struct mip_conn *con = NULL;
+    if ((s < 0) || (backlog < 0))
+    {
+        return -MIP_ERR_PARAM;
+    }
+    
+    if (backlog > SOMAXCONN)
+    {
+        backlog = SOMAXCONN;
+    }
+    if (backlog == 0)
+    {
+        backlog = SOMINCONN;
+    }
+    con = los_mip_get_conn(s);
+    if (NULL == con)
+    {
+        return -1;
+    }
+    ret = los_mip_tcp_listen(con, backlog);
     return ret;
 }
 
@@ -335,13 +432,47 @@ int los_mip_bind(int s, const struct sockaddr *name, socklen_t namelen)
                addr @ remote address info
                addrlen @ length of *addr
  Output      : None
- Return      : ret @ socket handle that accepted.
+ Return      : fd @ socket handle that accepted.
  *****************************************************************************/
 int los_mip_accept(int s, struct sockaddr *addr, socklen_t *addrlen)
 {
+    int fd = -1;
     int ret = 0;
-    /* unimplement yet */
-    return ret;
+    struct mip_conn *con = NULL;
+    struct skt_acpt_msg *acptmsg = NULL;
+    if (s < 0)
+    {
+        return -MIP_ERR_PARAM;
+    }
+    con = los_mip_get_conn(s);
+    if ((NULL == con) || (con->state != STAT_LISTEN))
+    {
+        return -1;
+    }
+    if (MIP_TRUE != los_mip_mbox_valid(&con->ctlb.tcp->acptmbox))
+    {
+        return -1;
+    }
+    if (MIP_TRUE == los_mip_conn_is_nonblocking(con))
+    {
+        ret = los_mip_mbox_fetch(&con->ctlb.tcp->acptmbox, 
+                                (void **)&acptmsg, 1);
+    }
+    else
+    {
+        
+        ret = los_mip_mbox_fetch(&con->ctlb.tcp->acptmbox, 
+                                (void **)&acptmsg, con->recv_timeout);
+    }
+    if ((MIP_OK == ret) && (acptmsg != NULL))
+    {
+        fd = acptmsg->con->socket;
+    }
+    else
+    {
+        /* set errno EWOULDBLOCK or EAGAIN*/
+    }
+    return fd;
 }
 
 /*****************************************************************************
@@ -705,6 +836,28 @@ int los_mip_setsockopt(int s, int level,
                 case SO_RCVTIMEO:
                     ret = los_mip_con_set_rcv_timeout(con, optval, optlen);
                     break;
+                case SO_KEEPALIVE:
+                    /* unimplement yet */
+                default:
+                    return -MIP_SOCKET_ERR;
+            }
+            break;
+        case IPPROTO_TCP:
+            switch (optname)
+            {
+                case TCP_NODELAY:
+                    if (*(const int *)optval)
+                    {
+                        los_mip_tcp_nagle_enable(con);
+                    }
+                    else
+                    {
+                        los_mip_tcp_nagle_disable(con);
+                    }
+                    break;
+                case TCP_KEEPALIVE:
+                    /* unimplement yet */
+                    break;
                 default:
                     return -MIP_SOCKET_ERR;
             }
@@ -713,4 +866,29 @@ int los_mip_setsockopt(int s, int level,
             return -1;
     }
     return ret;
+}
+
+/*****************************************************************************
+ Function    : los_mip_shutdown
+ Description : compatible socket interface.set socket options.
+ Input       : s @ socket's handle 
+               how @ specifies the type of shutdown SHUT_RD SHUT_WR SHUT_RDWR 
+ Output      : None
+ Return      : 0 means process ok, other failed.
+ *****************************************************************************/
+int los_mip_shutdown(int s, int how)
+{
+    struct mip_conn *con = NULL;
+    
+    if (s < 0)
+    {
+        return -MIP_ERR_PARAM;
+    }
+    con = los_mip_get_conn(s);
+    if (NULL == con)
+    {
+        return -MIP_ERR_PARAM;
+    }
+    
+    return 0;
 }

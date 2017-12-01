@@ -48,17 +48,20 @@
 __align(4) u8_t g_pool_pkgbuf[LOS_MPOOL_PKGBUF_SIZE] = {0};
 __align(4) u8_t g_pool_msgs[LOS_MPOOL_MSGS_SIZE] = {0};
 __align(4) u8_t g_pool_sockets[LOS_MPOOL_SOCKET_SIZE] = {0};
+__align(4) u8_t g_pool_tcp[LOS_MPOOL_TCP_SIZE] = {0};
 
 #elif defined ( __ICCARM__ )/* IAR Compiler */
 #pragma data_alignment=4
 u8_t g_pool_pkgbuf[LOS_MPOOL_PKGBUF_SIZE] = {0};
 u8_t g_pool_msgs[LOS_MPOOL_MSGS_SIZE] = {0};
 u8_t g_pool_sockets[LOS_MPOOL_SOCKET_SIZE] = {0};
+u8_t g_pool_tcp[LOS_MPOOL_TCP_SIZE] = {0};
 
 #elif defined ( __GNUC__ )/* GNU Compiler */
 u8_t g_pool_pkgbuf[LOS_MPOOL_PKGBUF_SIZE] = {0};
 u8_t g_pool_msgs[LOS_MPOOL_MSGS_SIZE] = {0};
 u8_t g_pool_sockets[LOS_MPOOL_SOCKET_SIZE] = {0};
+u8_t g_pool_tcp[LOS_MPOOL_TCP_SIZE] = {0};
 
 #endif
 
@@ -93,7 +96,14 @@ int los_mpools_init(void)
     if (LOS_OK != uwRet) 
     {
     	return -MIP_POOL_INIT_FAILED;
-    }     
+    }
+    
+	g_mpools_p[MPOOL_TCP] = g_pool_tcp;
+	uwRet = LOS_MemInit(g_mpools_p[MPOOL_TCP], LOS_MPOOL_TCP_SIZE);
+    if (LOS_OK != uwRet) 
+    {
+    	return -MIP_POOL_INIT_FAILED;
+    }      
     return MIP_OK;
 }
 

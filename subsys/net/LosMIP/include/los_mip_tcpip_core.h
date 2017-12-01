@@ -43,19 +43,18 @@
 #include "los_mip_netbuf.h"
 #include "los_mip_netif.h"
 
-#include "cmsis_os.h"
-
 #define MIP_TCPIP_TASK_STACKSIZE 1024
 #define MIP_TCPIP_TASK_PRIO 2
 #define MIP_TCPIP_MBOX_SIZE 6
 
 enum msg_type 
 {
-    TCPIP_MSG_SKT,//socket msg
-    TCPIP_MSG_INPKT,//net work input package msg
-    TCPIP_MSG_WARP,//net work input package msg
-    TCPIP_MSG_DELCON,//delete socket connect msg
-    TCPIP_MSG_FDELCON,//force delete socket connect msg
+    TCPIP_MSG_SKT,      /* socket msg */
+    TCPIP_MSG_INPKT,    /* net work input package msg */
+    TCPIP_MSG_WARP,     /* net work input package msg */
+    TCPIP_MSG_DELCON,   /* delete socket connect msg  */
+    TCPIP_MSG_FDELCON,  /* force delete socket connect msg */
+    TCPIP_MSG_TCP,      /* tcp message's from socket */
     TCPIP_MSG_MAX
 };
 
@@ -74,6 +73,7 @@ struct mip_msg
             netif_input_func input_fn;
         } inpkg;
         struct skt_del_msg *delcon;
+        struct skt_tcp_msg *tcpmsg;
     } msg;
     
 };

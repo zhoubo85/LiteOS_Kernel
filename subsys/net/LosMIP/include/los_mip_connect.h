@@ -41,7 +41,7 @@
 #include "los_mip_ipaddr.h"
 #include "los_mip_osfunc.h"
 #include "los_mip_udp.h"
-
+#include "los_mip_tcp.h"
 
 #define MIP_CONN_NONBLOCK           0x01
 
@@ -59,6 +59,16 @@ enum conn_type
     CONN_MAX
 };
 
+enum conn_state 
+{
+    STAT_NONE       = 0,
+    STAT_LISTEN     = 1,/* TCP listen */ 
+    STAT_CONNECT    = 2,/* TCP/UDP connect */ 
+    STAT_RDWD       = 3,/* TCP/UDP read write */ 
+    STAT_CLOSE      = 4,/* TCP/UDP Close */ 
+    STAT_MAX
+};
+
 struct skt_rcvd_msg
 {
     struct skt_rcvd_msg *next;
@@ -73,19 +83,19 @@ struct mip_conn
     int socket;
     /* type of the netconn (TCP, UDP or RAW) */
     enum conn_type type;
-    /** current state of the netconn */
-    //enum netconn_state state;
+    /* current state of the netconn */
+    enum conn_state state;
     /* the protocol control block */
     union 
     {
-        /* struct tcp_pcb *tcp; */
+        struct tcp_ctl *tcp;
         struct udp_ctl *udp;
     } ctlb;/* tcp udp control block */
+    struct mip_conn *listen;/* connection's listen connect */
     
     int last_err;
     mip_sem_t op_finished;/* snd data op finished */ 
     mip_mbox_t recvmbox;
-    mip_mbox_t acceptmbox;
     s32_t send_timeout;
     int recv_timeout;
     u8_t flags;
@@ -115,6 +125,25 @@ struct skt_del_msg
     struct mip_conn *con;
 };
 
+/* tcp accept messages */ 
+struct skt_acpt_msg
+{
+    struct mip_conn *con;
+};
+
+enum tcp_msg_type 
+{
+    TCP_CONN    = 1, /* start connect remote server */
+    TCP_CLOSE   = 2, /* user call close funtion */
+    TCP_SEND    = 3, /* user call send funtion, used for send immediately */
+    TCP_NONE
+};
+/* tcp accept messages */ 
+struct skt_tcp_msg
+{
+    enum tcp_msg_type type;
+    struct mip_conn *con;
+};
 
 int los_mip_port_is_used(u16_t port);
 int los_mip_add_port_to_used_list(u16_t port);
@@ -130,8 +159,7 @@ struct skt_rcvd_msg *los_mip_new_up_sktmsg(struct netbuf *buf,
                                            ip_addr_t *to, 
                                             u16_t port);
 int los_mip_delete_up_sktmsg(struct skt_rcvd_msg *msg);
-int los_mip_snd_msg_to_con(struct mip_conn *con, 
-                           struct skt_rcvd_msg *msg);
+int los_mip_snd_msg_to_con(struct mip_conn *con, void *msg);
 int los_mip_add_rcv_msg_to_tail(struct mip_conn *con, 
                                 struct skt_rcvd_msg *msg);
 int los_mip_con_set_rcv_timeout(struct mip_conn *con, 
@@ -145,4 +173,26 @@ struct skt_del_msg *los_mip_new_delmsg(struct mip_conn *con);
 int los_mip_snd_delmsg(struct mip_conn *con);
 int los_mip_udp_bind(struct udp_ctl *udpctl, 
                      u32_t *dst_ip, u16_t dst_port);
+int los_mip_conn_bind(struct mip_conn *conn, u32_t *dst_ip, 
+                      u16_t dst_port);
+int los_mip_tcp_listen(struct mip_conn *conn, int backlog);
+int los_mip_do_connect(struct mip_conn *conn, 
+                       u32_t *dst_ip, u16_t dst_port);
+struct mip_conn * los_mip_tcp_get_conn(struct netbuf *buf, 
+                                       ip_addr_t *src, 
+                                       ip_addr_t *dst);
+struct mip_conn *los_mip_clone_conn(struct mip_conn *tcpcon, 
+                                    ip_addr_t dst,
+                                    ip_addr_t rip, u16_t rport);
+int los_mip_con_send_tcp_msg(struct mip_conn *conn, 
+                             enum tcp_msg_type type);
+struct skt_acpt_msg *los_mip_new_acptmsg(struct mip_conn *con);
+int los_mip_snd_acptmsg_to_listener(struct mip_conn *listener, 
+                                    struct skt_acpt_msg *msg);
+int los_mip_tcp_close(struct mip_conn *conn);
+int los_mip_tcp_read(struct mip_conn *conn, void *mem, size_t len);
+int los_mip_tcp_write(struct mip_conn *conn, const void *mem, 
+                      size_t len);
+int los_mip_tcp_nagle_enable(struct mip_conn *conn);
+int los_mip_tcp_nagle_disable(struct mip_conn *conn);
 #endif
