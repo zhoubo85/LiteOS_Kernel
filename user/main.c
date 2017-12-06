@@ -49,7 +49,7 @@ static void los_config_network(void)
     
     return ;
 }
-char testbuf[100] = {0};
+char testbuf[200] = {0};
 static UINT32 g_testtcp;
 LITE_OS_SEC_TEXT VOID los_mip_test_tcp(void)
 {
@@ -72,7 +72,7 @@ LITE_OS_SEC_TEXT VOID los_mip_test_tcp(void)
         servaddr.sin_port = htons((unsigned short)port);  
         clientlen = sizeof(cliaddr); 
         los_mip_bind(fd, (struct sockaddr*)&servaddr, sizeof(servaddr));
-        #if 1
+        #if 0
         cliaddr.sin_family = AF_INET;  
         cliaddr.sin_addr.s_addr = inet_addr("192.168.137.1");  
         cliaddr.sin_port = htons((unsigned short)rport); 
@@ -97,14 +97,19 @@ LITE_OS_SEC_TEXT VOID los_mip_test_tcp(void)
         //los_mip_read(fd, testbuf, 50);
         #else
         los_mip_listen(fd, 0);
-        memset(&cliaddr, 0, sizeof(cliaddr)); 
+        memset(&cliaddr, 0, sizeof(cliaddr));
+        LOS_TaskDelay(5000);
+
+        clientfd = los_mip_accept(fd, (struct sockaddr*)&cliaddr, (socklen_t *)&clientlen);
         while(1)
         {
-            clientfd = los_mip_accept(fd, (struct sockaddr*)&cliaddr, (socklen_t *)&clientlen);
-            if (clientfd >= 0)
-            {
-                test ++;
-            }
+//            if (clientfd >= 0)
+//                {
+//                    test ++;
+//                }
+            test = los_mip_read(clientfd, testbuf, 50);
+            los_mip_write(clientfd, testbuf, test);
+            //LOS_TaskDelay(5000);
         }
         #endif
     }

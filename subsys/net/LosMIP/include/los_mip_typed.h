@@ -78,5 +78,8 @@ typedef int32_t   s32_t;
 #define MIP_TRUE 1
 #define MIP_FALSE 0
 
+#define MIP_MAX(a,b)    (((a) > (b)) ? (a) : (b))
+#define MIP_MIN(a,b)    (((a) < (b)) ? (a) : (b))
+
 
 #endif

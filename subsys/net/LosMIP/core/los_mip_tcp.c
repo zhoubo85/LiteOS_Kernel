@@ -60,6 +60,57 @@ static inline int los_mip_tcp_set_tmr_persit(struct mip_conn *con,
                                                u16_t count);
 static inline int los_mip_tcp_set_tmr_2msl(struct mip_conn *con, 
                                                u16_t count);
+static inline int los_mip_tcp_set_tmr_rexmit(struct mip_conn *con, 
+                                               u32_t rto);
+/*****************************************************************************
+ Function    : los_mip_tcp_update_rto
+ Description : update tcp rto value
+                first rto calc
+                1.  SRTT = R
+                2.  RTTVAR = R/2
+                3.  RTO = SRTT + max(rto_min, K*RTTVAR) , K = 4
+                normal rto calc(use R' as cur rtt )
+                RTTVAR = (1 - beta)*RTTVAR + beta*|SRTT - R'|
+                SRTT = (1 - alpha)*SRTT + alpha*R' 
+                RTO = SRTT + max(rto_min, K*RTTVAR)
+                alpha = 1/8  beta = 1/4
+ Input       : con @ connectionn's pointer
+               currtt @ the last acked segment's rtt value 
+ Output      : None
+ Return      : tmp @ tcp segment pointer, if failed return NULL
+ *****************************************************************************/
+void los_mip_tcp_update_rto(struct mip_conn *con, u32_t currtt)
+{
+    //u32_t tmprtt = 0;
+    u32_t tmprto = 0;
+    u32_t tmprttvar = 0;
+    u32_t tmpsrtt = 0;
+    
+    if ((NULL == con) || (NULL == con->ctlb.tcp))
+    {
+        return ;
+    }
+    tmprttvar = con->ctlb.tcp->rttvar;
+    tmprto = con->ctlb.tcp->rto;
+    if (tmprttvar != 0)
+    {
+        /* not first rto calc */
+        tmpsrtt = con->ctlb.tcp->srtt;
+        tmprttvar = (3 * tmprttvar / 4) + ((tmpsrtt - currtt) / 4);
+        tmpsrtt = (7 * tmpsrtt / 8) + (currtt / 8);
+        tmprto = tmpsrtt + MIP_MAX(MIP_TCP_RTO_MIN, (tmprttvar * 4));
+    }
+    else
+    {
+        /* first rto calc */
+        tmpsrtt = currtt;
+        tmprttvar = currtt / 2;
+        tmprto = tmpsrtt + MIP_MAX(MIP_TCP_RTO_MIN, (4 * tmprttvar)); 
+    }
+    con->ctlb.tcp->rttvar = tmprttvar;
+    con->ctlb.tcp->rto = tmprto;
+    con->ctlb.tcp->srtt = tmpsrtt;
+}
 /*****************************************************************************
  Function    : los_mip_tcp_new_seg
  Description : new a tcp segment 
@@ -110,6 +161,9 @@ struct mip_tcp_seg *los_mip_tcp_new_seg(struct mip_conn *con,
         netbuf_free(p);
         return NULL;
     }
+    tmp->sndtm = los_mip_cur_tm();
+    tmp->rearpcnt = 0;
+    tmp->rexmitcnt = 0;
     memset(tmp, 0, sizeof(struct mip_tcp_seg));
     tmp->p = p;
     if (NULL != opts)
@@ -256,6 +310,7 @@ struct mip_tcp_seg *los_mip_tcp_new_dataseg(struct mip_conn *con,
         netbuf_free(p);
         return NULL;
     }
+    tmp->sndtm = los_mip_cur_tm();
     memset(tmp, 0, sizeof(struct mip_tcp_seg));
     tmp->p = p;
 
@@ -312,7 +367,7 @@ struct mip_tcp_seg *los_mip_tcp_create_recvseg(struct mip_conn *con,
                                                   sizeof(struct mip_tcp_seg));
     if (NULL == tmp)
     {
-        netbuf_free(p);
+        //netbuf_free(p);
         return NULL;
     }
     memset(tmp, 0, sizeof(struct mip_tcp_seg));
@@ -402,22 +457,25 @@ int los_mip_tcp_add_seg_recieved(struct mip_conn *conn,
         for (tmp = conn->ctlb.tcp->recievd; tmp->next != NULL; tmp = tmp->next);
         tmp->next = seg;
     }
-    los_mip_snd_msg_to_con(conn, (void *)conn->ctlb.tcp->recievd);
+    if(conn->state & STAT_RD)
+    {
+        los_mip_snd_msg_to_con(conn, (void *)conn->ctlb.tcp->recievd);
+    }
     return MIP_OK;
 }
 
 /*****************************************************************************
  Function    : los_mip_tcp_add_seg_unacked
- Description : new a tcp segment 
+ Description : delete one unacked segment in a tcp segment un-acked list
  Input       : conn @ connectionn's pointer
-               seg @ the tcp segment that not acked yet
  Output      : None
- Return      : tmp @ tcp segment pointer, if failed return NULL
+ Return      : ret @ MIP_OK means process ok, other value means error happened
  *****************************************************************************/
 int los_mip_tcp_remove_seg_unacked(struct mip_conn *conn)
 {
     struct mip_tcp_seg *tmp = NULL;
     int ret = MIP_OK; 
+    u32_t rtt = 0;
     if (NULL == conn)
     {
         return -MIP_ERR_PARAM;
@@ -425,8 +483,21 @@ int los_mip_tcp_remove_seg_unacked(struct mip_conn *conn)
     if (NULL != conn->ctlb.tcp->unacked)
     {
         tmp = conn->ctlb.tcp->unacked->next;
+        if (los_mip_cur_tm() > tmp->sndtm)
+        {
+            rtt = los_mip_cur_tm() - tmp->sndtm;
+            /* call rtt update function */
+        }
+        else
+        {
+            rtt = los_mip_cur_tm() + 0xfffffffFU - tmp->sndtm;
+        }
+        /* update connection's rto */
+        los_mip_tcp_update_rto(conn, rtt);
+        
         ret = los_mip_tcp_delte_seg(conn->ctlb.tcp->unacked);
         conn->ctlb.tcp->unacked = tmp;
+        
         /* tell core task to send data */
         los_mip_con_send_tcp_msg(conn, TCP_SEND);
     }
@@ -434,6 +505,62 @@ int los_mip_tcp_remove_seg_unacked(struct mip_conn *conn)
     return ret;
 }
                                             
+/*****************************************************************************
+ Function    : los_mip_tcp_remove_seg_mulunacked
+ Description : delete unacked segment in a tcp segment un-acked list by the
+               ack number.
+ Input       : conn @ connectionn's pointer
+ Output      : None
+ Return      : ret @ MIP_OK means process ok, other value means error happened
+ *****************************************************************************/
+int los_mip_tcp_remove_seg_mulunacked(struct mip_conn *conn, u32_t ack)
+{
+    struct mip_tcp_seg *cur = NULL;
+    struct mip_tcp_seg *next = NULL;
+    int ret = MIP_OK; 
+    u32_t rtt = 0;
+    if (NULL == conn)
+    {
+        return -MIP_ERR_PARAM;
+    }
+    
+    cur = conn->ctlb.tcp->unacked;
+    while (NULL != cur)
+    {
+        next = cur->next;
+        if (ack >= (MIP_NTOHL(cur->tcphdr->seq) + cur->len))
+        {
+            if (ack == (MIP_NTOHL(cur->tcphdr->seq) + cur->len))
+            {
+                if (los_mip_cur_tm() > cur->sndtm)
+                {
+                    rtt = los_mip_cur_tm() - cur->sndtm;
+                    /* call rtt update function */
+                }
+                else
+                {
+                    rtt = los_mip_cur_tm() + 0xfffffffFU - cur->sndtm;
+                }
+                /* update connection's rto */
+                los_mip_tcp_update_rto(conn, rtt);
+            }
+            ret = los_mip_tcp_delte_seg(cur);
+            cur = NULL;
+        }
+        else
+        {
+            break;
+        }
+        cur = next;
+        //conn->ctlb.tcp->unacked = tmp;
+    }
+    conn->ctlb.tcp->unacked = cur;
+    /* tell core task to send data */
+    los_mip_con_send_tcp_msg(conn, TCP_SEND);
+    
+    return ret;
+}
+
 
 /*****************************************************************************
  Function    : los_mip_tcp_send_ack
@@ -498,6 +625,7 @@ static int los_mip_tcp_send_zeroprobe(struct netif *dev, struct mip_conn *con)
         /* zero window probe segment, need add to retransmit list */
         los_mip_tcp_add_seg_unacked(con, seg);
         seg = NULL;
+        los_mip_tcp_set_tmr_rexmit(con, con->ctlb.tcp->rto);
         los_mip_tcp_enable_ctltmr(TCP_TMR_REXMIT, con);
     }
     return ret;
@@ -644,7 +772,7 @@ int los_mip_tcp_send_syn(struct netif *dev, struct mip_conn *con)
             con->ctlb.tcp->snd_nxt++;
         }
         /* todo: can't delete here ,need store it wait ack */
-        //los_mip_tcp_delte_seg(seg);
+        los_mip_tcp_set_tmr_rexmit(con, con->ctlb.tcp->rto);
         los_mip_tcp_add_seg_unacked(con, seg);
         seg = NULL;
         los_mip_tcp_enable_ctltmr(TCP_TMR_REXMIT, con);
@@ -688,6 +816,7 @@ int los_mip_tcp_send_synack(struct netif *dev, struct mip_conn *con,
             con->ctlb.tcp->snd_nxt++;
         }
         /* todo: can't delete here ,need store it wait ack */
+        los_mip_tcp_set_tmr_rexmit(con, con->ctlb.tcp->rto);
         los_mip_tcp_add_seg_unacked(con, seg);
         los_mip_tcp_enable_ctltmr(TCP_TMR_REXMIT, con);
         seg = NULL;
@@ -726,6 +855,7 @@ int los_mip_tcp_send_paylaod(struct netif *dev, struct mip_conn *con)
             con->ctlb.tcp->snd_nxt += seg->len;
         }
         /* todo: can't delete here ,need store it wait ack */
+        los_mip_tcp_set_tmr_rexmit(con, con->ctlb.tcp->rto);
         los_mip_tcp_add_seg_unacked(con, seg);
         if (con->ctlb.tcp->flag & TCP_NODELAY)
         {
@@ -764,7 +894,7 @@ int los_mip_tcp_send_fin(struct netif *dev, struct mip_conn *con)
             con->ctlb.tcp->snd_nxt++;
         }
         /* todo: can't delete here ,need store it wait ack */
-        //los_mip_tcp_delte_seg(seg);
+        los_mip_tcp_set_tmr_rexmit(con, con->ctlb.tcp->rto);
         los_mip_tcp_add_seg_unacked(con, seg);
         los_mip_tcp_enable_ctltmr(TCP_TMR_REXMIT, con);
         seg = NULL;
@@ -824,9 +954,10 @@ static int los_mip_tcp_send_rst2(struct netif *dev, struct netbuf *p,
                                  ip_addr_t *src)
 {
     int ret = 0;
-    struct mip_tcp_seg *seg = NULL;
+//    struct mip_tcp_seg *seg = NULL;
     u8_t flags = 0;
     struct tcp_hdr *tcph = NULL;
+    ip_addr_t tmpsrc;
     u32_t tmp32 = 0;
     u16_t tmp16 = 0;
     if ((NULL == p) || (NULL == dev))
@@ -834,15 +965,16 @@ static int los_mip_tcp_send_rst2(struct netif *dev, struct netbuf *p,
         return -MIP_ERR_PARAM;
     }
     /* the connection is for the package , so we don't need jugde it */
-    flags = MIP_TCP_RST;
+    flags = MIP_TCP_RST | MIP_TCP_ACK;
     tcph = (struct tcp_hdr *)p->payload;
     tmp16 = tcph->sport;
     tcph->sport = tcph->dport;
     tcph->dport = tmp16;
+    /* here maybe some bugs */
     tcph->seq = los_mip_tcp_gen_isn();
     tmp32 = MIP_NTOHL(tcph->seq) + 1;
     tcph->ack = MIP_NTOHL(tmp32);
-    tcph->wndsize = 0;
+    tcph->wndsize = MIP_NTOHS(LOS_MIP_TCP_WIND_SIZE);
     tcph->chksum = 0;
     MIP_TCPH_HDRLEN_FLAGS_SET(tcph, 
                               ((MIP_TCP_HDR_LEN) / 4), 
@@ -851,11 +983,9 @@ static int los_mip_tcp_send_rst2(struct netif *dev, struct netbuf *p,
                                                 p->len, &dev->ip_addr,
                                                 src);
     p->len = MIP_TCP_HDR_LEN;
-    if (NULL != seg)
-    {
-        ret = los_mip_ipv4_output(dev, seg->p, &dev->ip_addr, 
-                                  src, 255, 0, MIP_PRT_TCP);
-    }
+    tmpsrc.addr = src->addr;
+    ret = los_mip_ipv4_output(dev, p, &dev->ip_addr, 
+                                  &tmpsrc, 255, 0, MIP_PRT_TCP);
     return ret;
 }
 
@@ -1066,8 +1196,11 @@ static int los_mip_tcp_process_fin_wait1(struct netif *dev, struct netbuf *p,
             //los_mip_sem_signal(&con->op_finished);
             break;
     }
-    netbuf_free(p);
-    p = NULL;
+    if (seg == NULL)
+    {
+        netbuf_free(p);
+        p = NULL;
+    }
     /* get mesage so, need stop retransmit timer and remove unacked */
     los_mip_tcp_remove_seg_unacked(con);
     los_mip_tcp_disable_ctltmr(TCP_TMR_REXMIT, con);
@@ -1170,8 +1303,11 @@ static int los_mip_tcp_process_fin_wait2(struct netif *dev, struct netbuf *p,
             
             break;
     }
-    netbuf_free(p);
-    p = NULL;
+    if (NULL == seg)
+    {
+        netbuf_free(p);
+        p = NULL;
+    }
     return ret;
 }
 
@@ -1263,7 +1399,7 @@ static inline int los_mip_tcp_store_data(struct netif *dev,
                                          struct tcp_hdr *tcph)
 {
     u8_t flags = 0;
-    u8_t freeflag = 0;
+    u8_t freeflag = 1;
     int ret = 0;
     u32_t ack = 0;
     struct mip_tcp_seg *seg = NULL;
@@ -1279,6 +1415,8 @@ static inline int los_mip_tcp_store_data(struct netif *dev,
     {
         /* seq error , need send rest*/
         los_mip_tcp_send_rst(dev, con);
+        netbuf_free(p);
+        p = NULL;
         return -MIP_TCP_SEQ_NUM_ERR;
     }
     if (MIP_NTOHL(tcph->seq) == (con->ctlb.tcp->rcv_nxt - last_seq_len))
@@ -1297,7 +1435,7 @@ static inline int los_mip_tcp_store_data(struct netif *dev,
         }
         else
         {
-            if (!con->ctlb.tcp->cwnd && MIP_NTOHS(tcph->wndsize))
+            if ((!con->ctlb.tcp->cwnd) && MIP_NTOHS(tcph->wndsize))
             {
                 /* remote congistion window not full , can send data */
                 los_mip_tcp_disable_ctltmr(TCP_TMR_P, con);
@@ -1310,7 +1448,8 @@ static inline int los_mip_tcp_store_data(struct netif *dev,
                 if (ack == con->ctlb.tcp->snd_nxt)
                 {
                     /* remove first unacked buf */
-                    los_mip_tcp_remove_seg_unacked(con);
+                    //los_mip_tcp_remove_seg_unacked(con);
+                    los_mip_tcp_remove_seg_mulunacked(con, ack);
                 }
                 /* add data to tcp recieved list */
                 payloadlen = p->len - MIP_TCPH_HDRLEN(tcph) * 4;
@@ -1530,12 +1669,38 @@ static int los_mip_tcp_establish(struct netif *dev, struct mip_conn *con,
     if (MIP_TCP_FLAGS_ACK == flags)
     {
         /* send a message to listen socket tell upper layer */
+        #if 1
+        con->ctlb.tcp->state = TCP_ESTABLISHED;
+        if(NULL != con->listen)
+        {
+            if (con->listen->state & STAT_ACCEPT)
+            {
+                scptmsg = los_mip_new_acptmsg(con);
+                ret = los_mip_snd_acptmsg_to_listener(con->listen, scptmsg);
+                if (ret != MIP_OK)
+                {
+                    /* send to accept box failed, so treat it as unaccept socket */
+                    con->listen->backlog++;
+                }
+            }
+            else
+            {
+                con->listen->backlog++;
+            }
+        }
+        #else
         scptmsg = los_mip_new_acptmsg(con);
         ret = los_mip_snd_acptmsg_to_listener(con->listen, scptmsg);
         if (ret == MIP_OK)
         {
             con->ctlb.tcp->state = TCP_ESTABLISHED;
         }
+        else
+        {
+            /* todo: failed add to listener */
+            los_mip_tcp_send_rst(dev, con);
+        }
+        #endif
         /* record the last acked seqence number */
         con->ctlb.tcp->lastack = MIP_NTOHL(tcph->ack) - 1;
     }
@@ -1657,6 +1822,30 @@ int los_mip_tcp_process_package(struct netif *dev, struct mip_conn *con,
 }
 
 /*****************************************************************************
+ Function    : los_mip_tcp_accept_list_full
+ Description : judge if the listener's un-accepted list is full
+ Input       : listencon @ listen connection's pointer
+ Output      : None
+ Return      : MIP_TRUE means list is full, other means not full.
+ *****************************************************************************/
+int los_mip_tcp_accept_list_full(struct mip_conn *listencon)
+{
+    u8_t backlog = 0;
+    u8_t unaccept = 0;
+    if (NULL == listencon)
+    {
+        return MIP_TRUE;
+    }
+    backlog = ((listencon->backlog & 0xff00) >> 8);
+    unaccept = listencon->backlog & 0x00ff;
+    if (unaccept < backlog)
+    {
+        return MIP_FALSE;
+    }
+    return MIP_TRUE;
+}
+
+/*****************************************************************************
  Function    : los_mip_tcp_input
  Description : parse tcp input package and send payload to upper layer
  Input       : p @ package's pointer
@@ -1706,14 +1895,17 @@ int los_mip_tcp_input(struct netbuf *p, struct netif *dev,
         if (NULL != tmpcon)
         {
             /* find a conn to deal with the message */
-            if (tmpcon->state == STAT_LISTEN)
+            if (tmpcon->state & STAT_LISTEN)
             {
-                newcon = los_mip_clone_conn(tmpcon, *dst, *src, tcph->sport);
-                /* syn come, give message to listen connection */
-                ret = los_mip_tcp_listen_syn(dev, newcon, tcph, src); 
-                if (ret != MIP_OK)
+                if (los_mip_tcp_accept_list_full(tmpcon) == MIP_FALSE)
                 {
-                    /* some error happend */
+                    newcon = los_mip_clone_conn(tmpcon, *dst, *src, tcph->sport);
+                    /* syn come, give message to listen connection */
+                    ret = los_mip_tcp_listen_syn(dev, newcon, tcph, src); 
+                    if (ret != MIP_OK)
+                    {
+                        /* some error happend */
+                    }
                 }
                 netbuf_free(p);
                 p = NULL;
@@ -1726,8 +1918,8 @@ int los_mip_tcp_input(struct netbuf *p, struct netif *dev,
         }
         else
         {
-            /* no connection is created for listen, directly send rst */
-            los_mip_tcp_send_rst2(dev, p, src);
+            /* no connection is created for listen, discard data */
+            //los_mip_tcp_send_rst2(dev, p, src);
             netbuf_free(p);
             p = NULL;
         }
@@ -1802,6 +1994,8 @@ int los_mip_tcp_process_upper_msg(void *msg)
 {
     int ret = 0;
     struct skt_tcp_msg *tcpmsg = NULL;
+    struct skt_acpt_msg *acptmsg = NULL;
+    struct mip_conn * unacpt = NULL;
     struct netif *dev = NULL;
     int msgtype = 0;
     
@@ -1851,6 +2045,29 @@ int los_mip_tcp_process_upper_msg(void *msg)
             {
                 /* send data immediately */
                 los_mip_tcp_send_paylaod(dev, tcpmsg->con);
+            }
+            break;
+        case TCP_READ:
+            /* read data immediately */
+            if (NULL != tcpmsg->con->ctlb.tcp->recievd)
+            {
+                /* send msg tell socket data buffer */
+                los_mip_snd_msg_to_con(tcpmsg->con, 
+                                       (void *)tcpmsg->con->ctlb.tcp->recievd);
+            }
+            break;
+        case TCP_ACCEPT:
+            if (tcpmsg->con->backlog & 0x00ff)
+            {
+                /* have un-accepted connection, need send to acceptbox */
+                /* todo: find the conn */
+                unacpt = los_mip_tcp_get_unaccept_conn(tcpmsg->con);
+                acptmsg = los_mip_new_acptmsg(unacpt);
+                if (NULL != unacpt)
+                {
+                    los_mip_snd_acptmsg_to_listener(tcpmsg->con, acptmsg);
+                    tcpmsg->con->backlog--;
+                }
             }
             break;
         default:
@@ -1959,6 +2176,55 @@ static inline int los_mip_tcp_set_tmr_2msl(struct mip_conn *con,
     return MIP_OK;
 }
 
+/*****************************************************************************
+ Function    : los_mip_tcp_backoff_rto
+ Description : get backed-off rto value.
+ Input       : cnt @ the retransmit count
+               rto @ current rto value, default is 200 ms
+ Output      : None
+ Return      : MIP_OK @ set ok, other mean faild.
+ *****************************************************************************/
+static inline u32_t los_mip_tcp_backoff_rto(u32_t cnt, u32_t rto)
+{
+    int i = 0;
+    u32_t ret = 1;
+    for(i = 0; i < cnt; i++)
+    {
+        ret = ret * 2;
+    }
+    ret *= rto;
+    return ret;
+}
+
+/*****************************************************************************
+ Function    : los_mip_tcp_set_tmr_rexmit
+ Description : set retransmit timer's count value.
+ Input       : conn @ tcp connection's pointer
+               rto @ current rto value, default is 200 ms
+ Output      : None
+ Return      : MIP_OK @ set ok, other mean faild.
+ *****************************************************************************/
+static inline int los_mip_tcp_set_tmr_rexmit(struct mip_conn *con, 
+                                               u32_t rto)
+{
+    u16_t count = 0;
+    if ((NULL == con) || (NULL == con->ctlb.tcp))
+    {
+        return -MIP_ERR_PARAM;
+    }
+    /* default is MIP_TCP_PERSIST_TIMEOUT */
+    if (!con->ctlb.tcp->rtocnt)
+    {
+        if (rto >= MIP_TCP_RTO_MAX)
+        {
+            rto = MIP_TCP_RTO_MAX;
+        }
+        count = rto / MIP_TCP_INTERNAL_TIMEOUT;
+        con->ctlb.tcp->rtocnt = count;
+    }
+    
+    return MIP_OK;
+}
 
 /*****************************************************************************
  Function    : los_mip_tcp_enable_ctltmr
@@ -1990,6 +2256,7 @@ static inline int los_mip_tcp_disable_ctltmr(enum tcp_tmr_type type,
 void los_mip_tcp_do_retransmit(struct netif *dev, struct mip_conn *con)
 {
     struct mip_tcp_seg *seg = NULL;
+    u32_t rto = 0;
 //    struct tcp_hdr *tcph = NULL;
 
     struct ipv4_hdr *iph = NULL;
@@ -2003,6 +2270,13 @@ void los_mip_tcp_do_retransmit(struct netif *dev, struct mip_conn *con)
         /* no unacked data, so return */
         return ;
     }
+    con->ctlb.tcp->rtocnt--;
+    if (con->ctlb.tcp->rtocnt)
+    {
+        /* not timeout */
+        return ;
+    }
+
     if (MIP_TRUE == netbuf_get_if_queued(seg->p))
     {
         /* not directly send , because of arp request, so use ipv4_output */
@@ -2013,15 +2287,23 @@ void los_mip_tcp_do_retransmit(struct netif *dev, struct mip_conn *con)
         los_mip_jump_header(seg->p, iph_len);
         los_mip_ipv4_output(dev, seg->p, &dev->ip_addr, 
                               &con->ctlb.tcp->remote_ip, 255, 0, MIP_PRT_TCP);
+        /* if the first package not send out ,we give another chance */
+        con->ctlb.tcp->rtocnt++;
+        seg->rearpcnt++;
+        //seg->rexmitcnt++;
     }
     else
     {
         /* direct send the unacked package */
+        seg->rexmitcnt++;
+        /* calc the next retransmit timeout value */
+        rto = los_mip_tcp_backoff_rto(seg->rexmitcnt, con->ctlb.tcp->rto);
+        los_mip_tcp_set_tmr_rexmit(con, rto);
         dev->hw_xmit(dev, seg->p);
     }
-    /* todo: need to calc the next retransmit timeout value */
-    con->ctlb.tcp->rtocnt++;
-    if (con->ctlb.tcp->rtocnt > MIP_TCP_MAX_RETRANS)
+
+    if ((seg->rexmitcnt > MIP_TCP_MAX_RETRANS) 
+        || (seg->rearpcnt > MIP_TCP_MAX_RETRANS))
     {
         los_mip_tcp_disable_ctltmr(TCP_TMR_REXMIT, con);
         con->ctlb.tcp->rtocnt = 0;
@@ -2184,7 +2466,7 @@ void los_mip_tcp_timer_callback(u32_t uwPar)
     {
         if (MIP_TRUE == los_mip_tcp_check_close_now(con))
         {
-            /* no data need send , and in close_wait state*/
+            /* no data need send , and in close_wait state */
             los_mip_tcp_send_fin(dev, con);
             con->ctlb.tcp->state = TCP_LAST_ACK;
         }

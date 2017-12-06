@@ -74,6 +74,43 @@ int los_mip_init_sockets(void)
 }
 
 /*****************************************************************************
+ Function    : los_mip_inc_ref
+ Description : increase the connection's reference count
+ Input       : con @ connection's pointer   
+ Output      : None 
+ Return      : MIP_OK process ok, other means failed
+ *****************************************************************************/
+int los_mip_inc_ref(struct mip_conn *con)
+{
+    if (NULL == con)
+    {
+        return -MIP_ERR_PARAM;
+    }
+    con->ref++;
+    return MIP_OK;
+}
+
+/*****************************************************************************
+ Function    : los_mip_dec_ref
+ Description : decrease the connection's reference count
+ Input       : con @ connection's pointer   
+ Output      : None 
+ Return      : MIP_OK process ok, other means failed
+ *****************************************************************************/
+int los_mip_dec_ref(struct mip_conn *con)
+{
+    if (NULL == con)
+    {
+        return -MIP_ERR_PARAM;
+    }
+    if (con->ref)
+    {
+        con->ref--;
+    }
+    return MIP_OK;
+}
+
+/*****************************************************************************
  Function    : los_mip_walk_con
  Description : return a connection's pointer 
  Input       : finished @ the start index of the connection's array   
@@ -109,14 +146,17 @@ struct mip_conn *los_mip_walk_con(s8_t *finished)
 /*****************************************************************************
  Function    : los_mip_get_conn
  Description : get connection which will deal with the package.
- Input       : 
+ Input       : buf @ input package's pointer
+               src @ source ip of the package
+               dst @ destination of the package
  Output      : None
  Return      :  
  *****************************************************************************/
-struct mip_conn* los_mip_tcp_get_conn(struct netbuf *buf, 
-                                      ip_addr_t *src, ip_addr_t *dst)
+struct mip_conn* los_mip_tcp_get_conn(struct netbuf *buf, ip_addr_t *src, 
+                                      ip_addr_t *dst)
 {
     struct mip_conn *ret = NULL;
+    struct mip_conn *listen = NULL;
     struct mip_skt_mgr *tmp = NULL;
     u8_t flags = 0;
     int i = 0;
@@ -134,7 +174,18 @@ struct mip_conn* los_mip_tcp_get_conn(struct netbuf *buf,
     for(i = 0; i < MIP_CONN_MAX; i++)
     {
         tmp = &g_sockets[i];
-        if (tmp->con && (tmp->con->type == CONN_TCP)
+        if ((NULL == tmp->con) || (NULL == tmp->con->ctlb.tcp))
+        {
+            continue;
+        }
+        if ((tmp->con->ctlb.tcp->state == TCP_CLOSED) && !tmp->con->ref)
+        {
+            /* need free connection */
+            los_mip_delete_conn(tmp->con);
+            tmp->con = NULL;
+            continue;
+        }
+        if ((tmp->con->type == CONN_TCP)
             && (tmp->con->ctlb.tcp->lport == tcph->dport))
         {
             if ((tmp->con->ctlb.tcp->rport == tcph->sport)
@@ -147,16 +198,23 @@ struct mip_conn* los_mip_tcp_get_conn(struct netbuf *buf,
                 ret = tmp->con;
                 break;
             }
-            else if ((tmp->con->state == STAT_LISTEN)
+            else if ((tmp->con->state & STAT_LISTEN)
                      && ((flags & MIP_TCP_SYN) && !(flags & MIP_TCP_ACK)))
             {
-                /* message is for creating a new connection */
-                ret = tmp->con;
-                break;
+                /* message is for creating a new connection, and maybe 
+                   it's retransmit package, and the connection already 
+                   created.
+                */
+                listen = tmp->con;
+//                break;
             }
         }
     }
-
+    if (NULL == ret)
+    {
+        /* no connection created, so use listen connection */
+        ret = listen;
+    }
     return ret;
 }
 
@@ -305,6 +363,9 @@ static int los_mip_conn_init_tcpctl(struct tcp_ctl *ptcp, struct mip_conn *con)
     ptcp->localmss = MIP_TCP_MSS;   /* local device's mss value */
     ptcp->lastack = 0;
     ptcp->rcv_nxt = 0;
+    ptcp->rto = MIP_TCP_RTO_MIN;
+    ptcp->srtt = 0;
+    ptcp->rttvar = 0;
     ptcp->snd_nxt = ptcp->isn;
     return MIP_OK;
 }
@@ -420,6 +481,7 @@ struct mip_conn *los_mip_new_conn(enum conn_type type)
         }
         tmp->recv_timeout = 0xffffffffU;
         tmp->rcvcnt = 0;
+        tmp->backlog = 0;
         los_mip_sem_new(&tmp->op_finished, 1);
         los_mip_sem_wait(&tmp->op_finished, 0);
         switch (type)
@@ -433,6 +495,7 @@ struct mip_conn *los_mip_new_conn(enum conn_type type)
             default:
                 break;
         }
+        los_mip_inc_ref(tmp);
     }
     g_sockets[i].con = tmp;
     return g_sockets[i].con;
@@ -480,6 +543,7 @@ struct mip_conn *los_mip_clone_conn(struct mip_conn *tcpcon, ip_addr_t dst,
         tmp->listen = tcpcon;
         tmp->socket = i;
         tmp->type = tcpcon->type;
+        tmp->backlog = 0;
         if(los_mip_mbox_new(&tmp->recvmbox, MIP_CONN_RCVBOX_SIZE) != MIP_OK) 
         {
             //recvmbox box create failed
@@ -509,6 +573,7 @@ struct mip_conn *los_mip_clone_conn(struct mip_conn *tcpcon, ip_addr_t dst,
         tmp->ctlb.tcp->lport = tcpcon->ctlb.tcp->lport;
         tmp->ctlb.tcp->remote_ip.addr = rip.addr;
         tmp->ctlb.tcp->rport = rport;
+        tmp->ref = 0;
     }
     g_sockets[i].con = tmp;
     return g_sockets[i].con;
@@ -940,7 +1005,7 @@ int los_mip_snd_acptmsg_to_listener(struct mip_conn *listener,
     {
         return -MIP_ERR_PARAM;
     }
-    if (listener->state != STAT_LISTEN)
+    if (!(listener->state & STAT_LISTEN))
     {
         /* not listen connection */
         return -MIP_ERR_PARAM;
@@ -1259,6 +1324,8 @@ int los_mip_tcp_listen(struct mip_conn *conn, int backlog)
         /* acceptmbox create failed */
         return -MIP_TCP_LISTEN_MBOX_ERR;
     }
+    /* the backlog is < 255, if > 255 the backlog should defined as u32_t */
+    conn->backlog = ((backlog & 0x00ff) << 8);
     return MIP_OK;
 }
 
@@ -1330,7 +1397,11 @@ int los_mip_tcp_close(struct mip_conn *conn)
         5: release connection's memory
     */
     los_mip_tcp_shut_slide_wnd(conn);
-    los_mip_con_send_tcp_msg(conn, TCP_CLOSE);
+    if ((conn->ctlb.tcp->state <= TCP_ESTABLISHED)
+        && (conn->ctlb.tcp->state > TCP_CLOSED))
+    {
+        los_mip_con_send_tcp_msg(conn, TCP_CLOSE);
+    }
     /* wait 100ms for tcp changed to closed */
     los_mip_tcp_wait_closed(conn, 100);
     los_mip_lock_socket(conn->socket);
@@ -1367,9 +1438,15 @@ int los_mip_tcp_read(struct mip_conn *conn, void *mem, size_t len)
         /* todo: should set errno that connection closed */
         return -1;
     }
+    if(conn->ctlb.tcp->flag & TCP_RXCLOSED)
+    {
+        /* todo: should set errno that connection rx shutdown */
+        return -1;
+    }
     recvmbox = &conn->recvmbox;
     recv_timeout = conn->recv_timeout;
-    
+    conn->state |= STAT_RD;
+    los_mip_con_send_tcp_msg(conn, TCP_READ);
     if (MIP_TRUE == los_mip_conn_is_nonblocking(conn))
     {
         ret = los_mip_mbox_fetch(recvmbox, (void **)&tcpmsgs, 1);
@@ -1378,6 +1455,7 @@ int los_mip_tcp_read(struct mip_conn *conn, void *mem, size_t len)
     {
         ret = los_mip_mbox_fetch(recvmbox, (void **)&tcpmsgs, recv_timeout);
     }
+    conn->state &= (~STAT_RD);
     if (MIP_OK != ret)
     {
         /* fetch message box error */
@@ -1491,6 +1569,12 @@ int los_mip_tcp_write(struct mip_conn *conn, const void *mem, size_t len)
         || (NULL == conn->ctlb.tcp))
     {
         return -MIP_ERR_PARAM;
+    }
+    if((conn->ctlb.tcp->flag & TCP_TXCLOSED)
+        || (conn->ctlb.tcp->state == TCP_CLOSED))
+    {
+        /* todo: should set errno that connection tx shutdown */
+        return -1;
     }
     /* copy the data to tcp send buffer */
     if (MIP_TRUE != los_mip_conn_is_nonblocking(conn))
@@ -1615,15 +1699,50 @@ int los_mip_tcp_nagle_disable(struct mip_conn *conn)
  *****************************************************************************/
 int los_mip_tcp_do_shutdown(struct mip_conn *conn, int how)
 {
-//    int shutrx = 0;
-//    int shutwr = 0;
+    int shutrx = 0;
+    int shutwr = 0;
     
     if ((NULL == conn) || (NULL == conn->ctlb.tcp))
     {
         return -MIP_ERR_PARAM;
     }
-//    shutrx = how & MIP_SHUT_RD;
-//    shutwr = how & MIP_SHUT_WR;
     
+    shutrx = how & MIP_SHUT_RD;
+    shutwr = how & MIP_SHUT_WR;
+    if (shutrx)
+    {
+        conn->ctlb.tcp->flag |= TCP_RXCLOSED;
+    }
+    if (shutwr)
+    {
+        conn->ctlb.tcp->flag |= TCP_TXCLOSED;
+        los_mip_con_send_tcp_msg(conn, TCP_CLOSE);
+    }
     return MIP_OK;
+}
+
+/*****************************************************************************
+ Function    : los_mip_tcp_get_unaccept_conn
+ Description : get un-accepted .
+ Input       : conn @ tcp connection's pointer
+               type @ the tcp message type
+ Output      : None
+ Return      : ret @ 0 means send ok, other value means error happened.
+ *****************************************************************************/
+struct mip_conn * los_mip_tcp_get_unaccept_conn(struct mip_conn *listen)
+{
+    int i = 0; 
+    struct mip_conn *tmp = NULL;
+    for (i = 0; i < MIP_CONN_MAX; i++)
+    {
+        tmp = g_sockets[i].con;
+        if ((NULL != tmp)
+            && (tmp->listen == listen)
+            && (tmp->ref == 0)
+            && (tmp->ctlb.tcp->state > TCP_CLOSED))
+        {
+            return tmp;
+        }
+    }
+    return NULL;
 }

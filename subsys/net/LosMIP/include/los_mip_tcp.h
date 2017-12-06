@@ -126,9 +126,11 @@ struct tcp_hdr
 };
 PACK_STRUCT_END
 
-#define TCP_NODELAY    0x01 /* don't delay send */
-#define TCP_KEEPALIVE  0x02 /* need send keep alive message while no data send */
-#define MIP_TCP_FLAGS 0x3fU
+#define TCP_NODELAY     0x01 /* don't delay send */
+#define TCP_KEEPALIVE   0x02 /* need send keep alive message while no data send */
+#define TCP_RXCLOSED    0x04 /* tcp rx closed by shutdown */
+#define TCP_TXCLOSED    0x08 /* tcp tx closed by shutdown */
+#define MIP_TCP_FLAGS   0x3fU
 
 #define MIP_TCP_HTONS(x) MIP_HTONS(x)
 #define MIP_TCP_HTONL(x) MIP_HTONL(x)
@@ -145,6 +147,9 @@ struct mip_tcp_seg
 {
     struct mip_tcp_seg *next;       /* used when putting segments on a queue */
     struct netbuf *p;               /* buffer containing data + TCP header */
+    u32_t  sndtm;                   /* record the time that the segement first send */
+    u8_t  rexmitcnt;                /* segment rexmit count */
+    u8_t  rearpcnt;                 /* segment rexmit for arp failed count */
     u16_t len;                      /* the TCP length of this segment */
     struct tcp_hdr *tcphdr;     /* the TCP header */
 };
@@ -161,9 +166,10 @@ struct tcp_ctl
     mip_mbox_t      acptmbox;   /* used for socket accept , its size if 1, 
                                    means every time get one connection come  */
     mip_timer_t     tmr;        /* tcp internel timer, used for calc all kind of timeout */
-    u16_t           rto;        /* retransmit timeout value, every time send a new bytes set to 0 */
-    u16_t           rtt;        /* RTT estimate value base is 500 ms, 
-                                   if rtt = 2, it means the rtt is 1000 */
+    u32_t           rto;        /* retransmit timeout value,  */
+    u32_t           srtt;        /* current package sRTT  value  */
+    u32_t           rttvar;     /* RTT average value used for estimate rto */
+    
     u8_t            flag;       /* tcp flags , like nodelay .... */
     u8_t            rtocnt;     /* count of retransmit */
     u8_t            tmrmask;    /* indicate which timer is working */
@@ -189,7 +195,9 @@ struct tcp_ctl
 };
 
 #define MIP_TCP_ACPTBOX_SIZE    1
-#define MIP_TCP_MAX_RETRANS     4
+#define MIP_TCP_MAX_RETRANS     10      /* default retransmit times */
+#define MIP_TCP_RTO_MIN         200     /* 200 ms */
+#define MIP_TCP_RTO_MAX         120000  /* 120 seconds */
 
 //int los_mip_tcp_send_syn(struct netif *dev, struct mip_conn *con);
 int los_mip_tcp_process_upper_msg(void* msg);

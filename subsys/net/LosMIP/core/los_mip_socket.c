@@ -445,7 +445,7 @@ int los_mip_accept(int s, struct sockaddr *addr, socklen_t *addrlen)
         return -MIP_ERR_PARAM;
     }
     con = los_mip_get_conn(s);
-    if ((NULL == con) || (con->state != STAT_LISTEN))
+    if ((NULL == con) || !(con->state & STAT_LISTEN))
     {
         return -1;
     }
@@ -453,6 +453,8 @@ int los_mip_accept(int s, struct sockaddr *addr, socklen_t *addrlen)
     {
         return -1;
     }
+    con->state |= STAT_ACCEPT;
+    los_mip_con_send_tcp_msg(con, TCP_ACCEPT);
     if (MIP_TRUE == los_mip_conn_is_nonblocking(con))
     {
         ret = los_mip_mbox_fetch(&con->ctlb.tcp->acptmbox, 
@@ -464,9 +466,11 @@ int los_mip_accept(int s, struct sockaddr *addr, socklen_t *addrlen)
         ret = los_mip_mbox_fetch(&con->ctlb.tcp->acptmbox, 
                                 (void **)&acptmsg, con->recv_timeout);
     }
+    con->state &= (~STAT_ACCEPT);
     if ((MIP_OK == ret) && (acptmsg != NULL))
     {
         fd = acptmsg->con->socket;
+        los_mip_inc_ref(acptmsg->con);
     }
     else
     {
@@ -889,6 +893,6 @@ int los_mip_shutdown(int s, int how)
     {
         return -MIP_ERR_PARAM;
     }
-    
+    los_mip_tcp_do_shutdown(con, how);
     return 0;
 }
