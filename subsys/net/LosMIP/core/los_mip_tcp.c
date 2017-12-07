@@ -62,6 +62,7 @@ static inline int los_mip_tcp_set_tmr_2msl(struct mip_conn *con,
                                                u16_t count);
 static inline int los_mip_tcp_set_tmr_rexmit(struct mip_conn *con, 
                                                u32_t rto);
+int los_mip_tcp_check_send_now(struct mip_conn *con, int tmoutflag);
 /*****************************************************************************
  Function    : los_mip_tcp_update_rto
  Description : update tcp rto value
@@ -499,7 +500,7 @@ int los_mip_tcp_remove_seg_unacked(struct mip_conn *conn)
         conn->ctlb.tcp->unacked = tmp;
         
         /* tell core task to send data */
-        los_mip_con_send_tcp_msg(conn, TCP_SEND);
+        los_mip_con_send_tcp_msg(conn, TCP_SENDI);
     }
 
     return ret;
@@ -556,7 +557,7 @@ int los_mip_tcp_remove_seg_mulunacked(struct mip_conn *conn, u32_t ack)
     }
     conn->ctlb.tcp->unacked = cur;
     /* tell core task to send data */
-    los_mip_con_send_tcp_msg(conn, TCP_SEND);
+    los_mip_con_send_tcp_msg(conn, TCP_SENDI);
     
     return ret;
 }
@@ -860,7 +861,7 @@ int los_mip_tcp_send_paylaod(struct netif *dev, struct mip_conn *con)
         if (con->ctlb.tcp->flag & TCP_NODELAY)
         {
             /* tell tcp stack to send data */
-            los_mip_con_send_tcp_msg(con, TCP_SEND);
+            los_mip_con_send_tcp_msg(con, TCP_SENDI);
         }
         seg = NULL;
     }
@@ -1447,7 +1448,7 @@ static inline int los_mip_tcp_store_data(struct netif *dev,
                 /* judge if unacked list need process */
                 if (ack == con->ctlb.tcp->snd_nxt)
                 {
-                    /* remove first unacked buf */
+                    /* remove unacked segment */
                     //los_mip_tcp_remove_seg_unacked(con);
                     los_mip_tcp_remove_seg_mulunacked(con, ack);
                 }
@@ -1455,17 +1456,21 @@ static inline int los_mip_tcp_store_data(struct netif *dev,
                 payloadlen = p->len - MIP_TCPH_HDRLEN(tcph) * 4;
                 if (payloadlen)
                 {
-                    con->ctlb.tcp->lastseqlen = payloadlen;
                     seg = los_mip_tcp_create_recvseg(con, p, tcph, payloadlen);
                     if (NULL != seg)
                     {
                         freeflag = 0;
+                        con->ctlb.tcp->lastseqlen = payloadlen;
                         los_mip_tcp_add_seg_recieved(con, seg);
                         con->ctlb.tcp->rcv_nxt += payloadlen;
                         /* update slide window size and send the ack */
                         con->ctlb.tcp->swnd -= payloadlen;
                         /* todo: need to check if there are data need send */
-                        ret = los_mip_tcp_send_ack(dev, con);
+                        if(MIP_FALSE == los_mip_tcp_check_send_now(con, 0))
+                        {
+                            ret = los_mip_tcp_send_ack(dev, con);
+                        }
+                        
                     }
                 }
             }
@@ -1933,16 +1938,19 @@ int los_mip_tcp_input(struct netbuf *p, struct netif *dev,
  Function    : los_mip_tcp_check_send_now
  Description : check if can send tcp segment right now.
  Input       : conn @ tcp connection's pointer
+               flag @ timeout flag , if 1 means this is called by internal
+               timer's timeout callback function
  Output      : None
  Return      : MIP_TRUE means can send now,  MIP_FALSE means don't send now
                need wait timeout to send data.
  *****************************************************************************/
-int los_mip_tcp_check_send_now(struct mip_conn *con)
+int los_mip_tcp_check_send_now(struct mip_conn *con, int tmoutflag)
 {
     u8_t flag = 0;
-    int datalen;
+    int datalen = 0;
     struct netbuf *tmp = NULL;
     int tmpmss = 0;
+    int ret = MIP_TRUE;
     if ((NULL == con) || (NULL == con->ctlb.tcp))
     {
         return MIP_FALSE;
@@ -1965,21 +1973,33 @@ int los_mip_tcp_check_send_now(struct mip_conn *con)
         tmp = con->ctlb.tcp->unsend;
         tmpmss = con->ctlb.tcp->mss > con->ctlb.tcp->localmss ?\
                     con->ctlb.tcp->localmss:con->ctlb.tcp->mss;
-        while(NULL != tmp)
+        if (NULL != tmp)
         {
-            datalen += tmp->len;
-            if (datalen >= tmpmss)
+            if (con->ctlb.tcp->unacked != NULL)
             {
-                return MIP_TRUE;
+                ret = MIP_FALSE;
             }
-            tmp = tmp->next;
-        }
-        if (con->ctlb.tcp->unacked != NULL)
-        {
-            return MIP_FALSE;
+            else
+            {
+                while(NULL != tmp)
+                {
+                    datalen += tmp->len;
+                    if (datalen >= tmpmss)
+                    {
+                        ret = MIP_TRUE;
+                        break;
+                    }
+                    tmp = tmp->next;
+                }
+                if ((datalen < tmpmss) && !tmoutflag)
+                {
+                    /* todo: need get timeout flag */
+                    ret = MIP_FALSE;
+                }
+            }
         }
     }
-    return MIP_TRUE;
+    return ret;
 }
 
 /*****************************************************************************
@@ -2034,14 +2054,23 @@ int los_mip_tcp_process_upper_msg(void *msg)
             }
             else
             {
-                /* send fin message failed, tell upper layer 
-                   todo: need set internal error flag */
+                /*
+                   send fin message failed, tell upper layer 
+                   todo: need set internal error flag 
+                */
                 los_mip_sem_signal(&tcpmsg->con->op_finished);
             }
             break;
-        case TCP_SEND:
+        case TCP_SENDD:
+            /* 
+               internal timer timeout, and datalen < mss , 
+               send data immediately 
+            */
+            los_mip_tcp_send_paylaod(dev, tcpmsg->con);
+            break;
+        case TCP_SENDI:
             /* send data immediately */
-            if (MIP_TRUE == los_mip_tcp_check_send_now(tcpmsg->con))
+            if (MIP_TRUE == los_mip_tcp_check_send_now(tcpmsg->con, 0))
             {
                 /* send data immediately */
                 los_mip_tcp_send_paylaod(dev, tcpmsg->con);
@@ -2421,8 +2450,6 @@ void los_mip_tcp_timer_callback(u32_t uwPar)
     struct mip_conn *con = NULL;
     struct netif *dev = NULL;
 
-//    int ret = 0;
-//    int test = 0;
     con = (struct mip_conn *)uwPar;
     int i = 0;
     u8_t tmr = 0;
@@ -2457,10 +2484,10 @@ void los_mip_tcp_timer_callback(u32_t uwPar)
                 break;
         }
     }
-    if (MIP_TRUE == los_mip_tcp_check_send_now(con))
+    if (MIP_TRUE == los_mip_tcp_check_send_now(con, 1))
     {
         /* send data immediately */
-        los_mip_con_send_tcp_msg(con, TCP_SEND);
+        los_mip_con_send_tcp_msg(con, TCP_SENDD);
     }
     else
     {

@@ -852,11 +852,11 @@ int los_mip_setsockopt(int s, int level,
                 case TCP_NODELAY:
                     if (*(const int *)optval)
                     {
-                        los_mip_tcp_nagle_enable(con);
+                        los_mip_tcp_nagle_disable(con);
                     }
                     else
                     {
-                        los_mip_tcp_nagle_disable(con);
+                        los_mip_tcp_nagle_enable(con);
                     }
                     break;
                 case TCP_KEEPALIVE:

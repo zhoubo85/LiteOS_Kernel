@@ -1650,26 +1650,9 @@ int los_mip_tcp_write(struct mip_conn *conn, const void *mem, size_t len)
     if (wlen)
     {
         /* tell tcp stack to send data */
-        los_mip_con_send_tcp_msg(conn, TCP_SEND);
+        los_mip_con_send_tcp_msg(conn, TCP_SENDI);
     }
     return wlen;
-}
-
-/*****************************************************************************
- Function    : los_mip_tcp_nagle_enable
- Description : enable nagle algorithm.
- Input       : mip_conn @ tcp connection's pointer
- Output      : None
- Return      : MIP_OK @ process ok, other value means failed.
- *****************************************************************************/
-int los_mip_tcp_nagle_enable(struct mip_conn *conn)
-{
-    if ((NULL == conn) || (NULL == conn->ctlb.tcp))
-    {
-        return -MIP_ERR_PARAM;
-    }
-    conn->ctlb.tcp->flag |= TCP_NODELAY;
-    return MIP_OK;
 }
 
 /*****************************************************************************
@@ -1680,6 +1663,23 @@ int los_mip_tcp_nagle_enable(struct mip_conn *conn)
  Return      : MIP_OK @ process ok, other value means failed.
  *****************************************************************************/
 int los_mip_tcp_nagle_disable(struct mip_conn *conn)
+{
+    if ((NULL == conn) || (NULL == conn->ctlb.tcp))
+    {
+        return -MIP_ERR_PARAM;
+    }
+    conn->ctlb.tcp->flag |= TCP_NODELAY;
+    return MIP_OK;
+}
+
+/*****************************************************************************
+ Function    : los_mip_tcp_nagle_enable
+ Description : enable nagle algorithm.
+ Input       : mip_conn @ tcp connection's pointer
+ Output      : None
+ Return      : MIP_OK @ process ok, other value means failed.
+ *****************************************************************************/
+int los_mip_tcp_nagle_enable(struct mip_conn *conn)
 {
     if ((NULL == conn) || (NULL == conn->ctlb.tcp))
     {

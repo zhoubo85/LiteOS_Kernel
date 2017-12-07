@@ -61,7 +61,7 @@ LITE_OS_SEC_TEXT VOID los_mip_test_tcp(void)
     int clientlen = 0; 
     struct sockaddr_in servaddr;  
     struct sockaddr_in cliaddr; 
-    
+    int on = 1;
     fd = los_mip_socket(AF_INET, SOCK_STREAM, 0);
     if (fd >= 0)
     {
@@ -101,6 +101,7 @@ LITE_OS_SEC_TEXT VOID los_mip_test_tcp(void)
         LOS_TaskDelay(5000);
 
         clientfd = los_mip_accept(fd, (struct sockaddr*)&cliaddr, (socklen_t *)&clientlen);
+        los_mip_setsockopt(clientfd, IPPROTO_TCP, TCP_NODELAY, (void *)&on, sizeof(on)); 
         while(1)
         {
 //            if (clientfd >= 0)

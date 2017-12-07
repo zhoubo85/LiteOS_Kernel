@@ -130,6 +130,7 @@ PACK_STRUCT_END
 #define TCP_KEEPALIVE   0x02 /* need send keep alive message while no data send */
 #define TCP_RXCLOSED    0x04 /* tcp rx closed by shutdown */
 #define TCP_TXCLOSED    0x08 /* tcp tx closed by shutdown */
+//#define TCP_INTIMOUT    0x80 /* tcp internal timer timeout */
 #define MIP_TCP_FLAGS   0x3fU
 
 #define MIP_TCP_HTONS(x) MIP_HTONS(x)

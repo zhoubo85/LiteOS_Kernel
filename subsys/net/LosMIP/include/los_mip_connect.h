@@ -137,9 +137,10 @@ enum tcp_msg_type
 {
     TCP_CONN    = 1, /* start connect remote server */
     TCP_CLOSE   = 2, /* user call close funtion */
-    TCP_SEND    = 3, /* user call send funtion, used for send immediately */
-    TCP_READ    = 4, /* user call read funtion, used for read immediately */
-    TCP_ACCEPT  = 5, /* start accept socket to upper layer */
+    TCP_SENDI   = 3, /* user call send funtion, used for send immediately */
+    TCP_SENDD   = 4, /* user call send funtion, used for timeout send */
+    TCP_READ    = 5, /* user call read funtion, used for read immediately */
+    TCP_ACCEPT  = 6, /* start accept socket to upper layer */
     TCP_NONE
 };
 /* tcp accept messages */ 
