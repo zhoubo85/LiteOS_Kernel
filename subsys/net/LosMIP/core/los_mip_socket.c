@@ -862,6 +862,16 @@ int los_mip_setsockopt(int s, int level,
                 case TCP_KEEPALIVE:
                     /* unimplement yet */
                     break;
+                case TCP_QUICKACK:
+                    if (*(const int *)optval)
+                    {
+                        los_mip_tcp_quickack_enable(con);
+                    }
+                    else
+                    {
+                        los_mip_tcp_quickack_disable(con);
+                    }
+                    break;
                 default:
                     return -MIP_SOCKET_ERR;
             }

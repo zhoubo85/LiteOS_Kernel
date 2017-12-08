@@ -63,6 +63,8 @@
 #define MIP_TCP_FIN_WAIT2_TIMEOUT   10
 /* persist default timeout value , it means 50*200ms */
 #define MIP_TCP_PERSIST_TIMEOUT   50
+/* tcp base sycle timer's timeout value, it means 50ms */
+#define MIP_TCP_BASE_TIMER_TIMEOUT  50
 
 /* 2MSL default timeout value , it means 300*200ms */
 #define MIP_TCP_2MSL_TIMEOUT   300

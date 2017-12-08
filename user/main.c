@@ -72,7 +72,7 @@ LITE_OS_SEC_TEXT VOID los_mip_test_tcp(void)
         servaddr.sin_port = htons((unsigned short)port);  
         clientlen = sizeof(cliaddr); 
         los_mip_bind(fd, (struct sockaddr*)&servaddr, sizeof(servaddr));
-        #if 0
+        #if 1
         cliaddr.sin_family = AF_INET;  
         cliaddr.sin_addr.s_addr = inet_addr("192.168.137.1");  
         cliaddr.sin_port = htons((unsigned short)rport); 
@@ -81,7 +81,7 @@ LITE_OS_SEC_TEXT VOID los_mip_test_tcp(void)
         {
             while(1);
         }
-        while(test < 5)
+        while(1)
         {
             test++;
             testbuf[0] = test + 1;
@@ -89,8 +89,9 @@ LITE_OS_SEC_TEXT VOID los_mip_test_tcp(void)
             testbuf[2] = test + 3;
             testbuf[3] = test + 4;
             testbuf[4] = test + 5;
-            los_mip_write(fd, testbuf, 5);
-            LOS_TaskDelay(500);
+            test = los_mip_read(fd, testbuf, 50);
+            los_mip_write(fd, testbuf, test);
+            //LOS_TaskDelay(500);
         }
         //LOS_TaskDelay(25000);
         los_mip_close(fd);
@@ -101,7 +102,7 @@ LITE_OS_SEC_TEXT VOID los_mip_test_tcp(void)
         LOS_TaskDelay(5000);
 
         clientfd = los_mip_accept(fd, (struct sockaddr*)&cliaddr, (socklen_t *)&clientlen);
-        los_mip_setsockopt(clientfd, IPPROTO_TCP, TCP_NODELAY, (void *)&on, sizeof(on)); 
+        //los_mip_setsockopt(clientfd, IPPROTO_TCP, TCP_NODELAY, (void *)&on, sizeof(on)); 
         while(1)
         {
 //            if (clientfd >= 0)

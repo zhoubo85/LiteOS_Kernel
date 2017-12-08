@@ -15,12 +15,17 @@ LosMIP是专门为LiteOS开发的一款micro tcp/ip协议栈。主要用于ram�
 ## LosMIP代码简介
 
 core ： 本文件夹下存放协议的核心代码实现
+
 driver： 存放网口的驱动程序
+
 include：存放协议使用的酥油头文件
+
 sys：存放于操作系统密切相关的函数的实现文件，比如内存池管理，消息队列，任务管理、信号量等等。
 
+## socket使用
+- LosMIP 的使用和linux上的socket接口使用方式是一样的，如果不熟悉linux socket编程，请先熟悉linux的socket编程，在网络上有大量的参考资料。不过LosMIP的头文件与linux的socket头文件不同，请参考后续章节。
+- LosMIP的接口与linux下的socket接口相比，LosMIP的接口均是以los_mip_ 这样的前缀开头。
 
-## LosMIP使用
 - 头文件包含。使用LosMIP编程，需要包含如下头文件
 		
 		#include "los_mip_netif.h"
@@ -52,6 +57,8 @@ sys：存放于操作系统密切相关的函数的实现文件，比如内存�
 		los_mip_netif_config(&g_stm32f746, &testip, &testmask, &testgw);
 		los_mip_netif_up(&g_stm32f746);
 		los_mip_set_default_if(&g_stm32f746);
+
+### UDP socket 使用
 
 - 创建socket并接收发送数据，示例如下
 
@@ -87,6 +94,103 @@ sys：存放于操作系统密切相关的函数的实现文件，比如内存�
 				n = los_mip_sendto(sxx,tx, 2, 0,(struct sockaddr *)&toAddr,sizeof(struct sockaddr_in));
         }
     }
+
+### TCP socket使用
+- 简单创建tcp client并接收发送数据，示例如下
+
+		int iMode = 1;  
+		fd = los_mip_socket(AF_INET, SOCK_STREAM, 0);
+		if (fd >= 0)
+		{
+			/* set noblock mode, if don't set default is block mode */
+			ret = los_mip_ioctlsocket(fd,FIONBIO,&iMode); 
+        	memset(&localaddr, 0, sizeof(localaddr));  
+        	memset(&remoteaddr, 0, sizeof(remoteaddr));  
+        	localaddr.sin_family = AF_INET;  
+        	localaddr.sin_addr.s_addr = htonl(INADDR_ANY);  
+        	localaddr.sin_port = htons((unsigned short)port);  
+        	clientlen = sizeof(cliaddr); 
+			/* bind to a local port for the socket, if don't do this system
+			   will generate a random unused port for socket */
+        	los_mip_bind(fd, (struct sockaddr*)&localaddr, sizeof(localaddr));
+
+        	remoteaddr.sin_family = AF_INET;  
+        	remoteaddr.sin_addr.s_addr = inet_addr("192.168.137.1");  
+        	remoteaddr.sin_port = htons((unsigned short)rport); 
+			/* connect remote server */
+        	test = los_mip_connect(fd, (struct sockaddr*)&remoteaddr, sizeof(remoteaddr));
+        	if (test != 0)
+        	{
+            while(1);
+        	}
+			while(1)
+			{
+				/* read / write data  */
+            	test = los_mip_read(fd, testbuf, 50);
+            	los_mip_write(fd, testbuf, test);
+			}
+		}
+
+- 简单创建tcp server并接收发送数据，示例如下
+
+		int iMode = 1;  
+		fd = los_mip_socket(AF_INET, SOCK_STREAM, 0);
+		if (fd >= 0)
+		{
+			/* set noblock mode, if don't set default is block mode */
+			ret = los_mip_ioctlsocket(fd,FIONBIO,&iMode); 
+        	memset(&localaddr, 0, sizeof(localaddr));  
+        	memset(&remoteaddr, 0, sizeof(remoteaddr));  
+        	localaddr.sin_family = AF_INET;  
+        	localaddr.sin_addr.s_addr = htonl(INADDR_ANY);  
+        	localaddr.sin_port = htons((unsigned short)port);  
+        	clientlen = sizeof(cliaddr); 
+			/* bind to a local port for the socket, if don't do this system
+			   will generate a random unused port for socket */
+        	los_mip_bind(fd, (struct sockaddr*)&localaddr, sizeof(localaddr));
+			/* listen the port */
+        	los_mip_listen(fd, backlog);
+        	memset(&remoteaddr, 0, sizeof(remoteaddr));
+			/* connect remote server */
+        	 clientfd = los_mip_accept(fd, (struct sockaddr*)&remoteaddr, (socklen_t *)&remoteaddr);
+        	if (clientfd < 0)
+        	{
+            	while(1);
+        	}
+			while(1)
+			{
+				/* read / write data  */
+            	test = los_mip_read(clientfd, testbuf, 50);
+            	los_mip_write(clientfd, testbuf, test);
+				if(/* all things done*/)
+				{
+					break;
+				}
+			}
+			los_mip_close(clientfd);
+			los_mip_close(fd);
+		}
+
+- tcp 目前支持设置的option
+
+		function：int los_mip_fcntl(int s, int cmd, int val)
+        cmd：
+          F_SETFL
+        val：
+          O_NONBLOCK
+
+		function： int los_mip_setsockopt(int s, int level, 
+                       int optname, 
+                       const void *optval, 
+                       socklen_t optlen) 
+		level：
+        SOL_SOCKET
+          optname：
+          SO_RCVTIMEO
+		IPPROTO_TCP
+          optname：
+		  TCP_NODELAY
+          TCP_QUICKACK
 
 ## LosMIP网口驱动添加
 

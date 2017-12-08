@@ -348,20 +348,21 @@ static int los_mip_conn_init_tcpctl(struct tcp_ctl *ptcp, struct mip_conn *con)
     memset(ptcp, 0, sizeof(struct tcp_ctl));
     
     /* todo: need give the timer callback function pointer */
-    ptcp->tmr = los_mip_create_swtimer(MIP_TCP_INTERNAL_TIMEOUT,
+    ptcp->tmr = los_mip_create_swtimer(MIP_TCP_BASE_TIMER_TIMEOUT,
                                        los_mip_tcp_timer_callback, (u32_t)con);
     if (los_mip_is_valid_timer(ptcp->tmr) != MIP_TRUE)
     {
         return -MIP_TCP_TMR_OPS_ERR;
     }
     los_mip_start_timer(ptcp->tmr);
+    ptcp->basecnt = MIP_TCP_INTERNAL_TIMEOUT / MIP_TCP_BASE_TIMER_TIMEOUT;
     ptcp->state = TCP_INITIAL;
     ptcp->isn = los_mip_tcp_gen_isn();
     ptcp->swnd = LOS_MIP_TCP_WIND_SIZE;
     ptcp->unsndsize = 0;
     ptcp->mss = 0;                  /* remote endpoint's mss value */
     ptcp->localmss = MIP_TCP_MSS;   /* local device's mss value */
-    ptcp->lastack = 0;
+    ptcp->needackcnt = 0;
     ptcp->rcv_nxt = 0;
     ptcp->rto = MIP_TCP_RTO_MIN;
     ptcp->srtt = 0;
@@ -1028,11 +1029,11 @@ int los_mip_snd_acptmsg_to_listener(struct mip_conn *listener,
  *****************************************************************************/
 int los_mip_snd_msg_to_con(struct mip_conn *con, void *msg)
 {
-    if ((NULL == con) || (NULL == msg))
+    if (NULL == con)
     {
         return -MIP_ERR_PARAM;
     }
-
+    /* if NULL == msg , it means tcp closed */
     if (los_mip_mbox_trypost(&con->recvmbox, msg) != MIP_OK) 
     {
         return -MIP_OSADP_MSGPOST_FAILED;
@@ -1275,6 +1276,15 @@ int los_mip_do_connect(struct mip_conn *conn, u32_t *dst_ip, u16_t dst_port)
             conn->ctlb.tcp->remote_ip.addr = *dst_ip;
             conn->ctlb.tcp->rport = dst_port;
         }
+        if (conn->ctlb.tcp->lport == 0x00)
+        {
+            /* socket not bind, so generate the local random port */
+            conn->ctlb.tcp->lport = los_mip_generate_port();
+            if (MIP_OK != los_mip_add_port_to_used_list(conn->ctlb.tcp->lport))
+            {
+                return -MIP_CON_PORT_RES_USED_OUT;
+            }
+        }
         /* send syn message out to do tcp connect process */
         sret = los_mip_con_send_tcp_msg(conn, TCP_CONN);
         if (sret != MIP_OK)
@@ -1500,7 +1510,10 @@ int los_mip_tcp_read(struct mip_conn *conn, void *mem, size_t len)
                     conn->ctlb.tcp->recievd = next;
                 }
             }
-
+            if (NULL == conn->ctlb.tcp->recievd)
+            {
+                conn->rcvcnt = 0;
+            }
         }
         /* todo: need do some protect */
         conn->ctlb.tcp->swnd += copylen;
@@ -1653,6 +1666,40 @@ int los_mip_tcp_write(struct mip_conn *conn, const void *mem, size_t len)
         los_mip_con_send_tcp_msg(conn, TCP_SENDI);
     }
     return wlen;
+}
+
+/*****************************************************************************
+ Function    : los_mip_tcp_quickack_enable
+ Description : enable tcp quick ack mode .
+ Input       : mip_conn @ tcp connection's pointer
+ Output      : None
+ Return      : MIP_OK @ process ok, other value means failed.
+ *****************************************************************************/
+int los_mip_tcp_quickack_enable(struct mip_conn *conn)
+{
+    if ((NULL == conn) || (NULL == conn->ctlb.tcp))
+    {
+        return -MIP_ERR_PARAM;
+    }
+    conn->ctlb.tcp->flag |= TCP_QUICKACK;
+    return MIP_OK;
+}
+
+/*****************************************************************************
+ Function    : los_mip_tcp_quickack_disable
+ Description : disable tcp quick ack mode.
+ Input       : mip_conn @ tcp connection's pointer
+ Output      : None
+ Return      : MIP_OK @ process ok, other value means failed.
+ *****************************************************************************/
+int los_mip_tcp_quickack_disable(struct mip_conn *conn)
+{
+    if ((NULL == conn) || (NULL == conn->ctlb.tcp))
+    {
+        return -MIP_ERR_PARAM;
+    }
+    conn->ctlb.tcp->flag &= ~TCP_QUICKACK;
+    return MIP_OK;
 }
 
 /*****************************************************************************

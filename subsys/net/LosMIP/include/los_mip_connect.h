@@ -202,6 +202,8 @@ int los_mip_tcp_write(struct mip_conn *conn, const void *mem,
                       size_t len);
 int los_mip_tcp_nagle_enable(struct mip_conn *conn);
 int los_mip_tcp_nagle_disable(struct mip_conn *conn);
+int los_mip_tcp_quickack_enable(struct mip_conn *conn);
+int los_mip_tcp_quickack_disable(struct mip_conn *conn);
 int los_mip_tcp_do_shutdown(struct mip_conn *conn, int how);
 struct mip_conn * los_mip_tcp_get_unaccept_conn(struct mip_conn *listen);
 #endif

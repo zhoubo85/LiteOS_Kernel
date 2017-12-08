@@ -63,6 +63,9 @@ static inline int los_mip_tcp_set_tmr_2msl(struct mip_conn *con,
 static inline int los_mip_tcp_set_tmr_rexmit(struct mip_conn *con, 
                                                u32_t rto);
 int los_mip_tcp_check_send_now(struct mip_conn *con, int tmoutflag);
+static inline int los_mip_tcp_check_ack_now(struct mip_conn *con);
+static inline int los_mip_tcp_check_delayack(struct mip_conn *con);
+static inline void los_mip_tcp_clear_ackcnt(struct mip_conn *con);
 /*****************************************************************************
  Function    : los_mip_tcp_update_rto
  Description : update tcp rto value
@@ -277,7 +280,8 @@ struct mip_tcp_seg *los_mip_tcp_new_dataseg(struct mip_conn *con,
         return NULL;
     }
     /* fisrt should calc the send data's length */
-    mss = (con->ctlb.tcp->mss > con->ctlb.tcp->localmss) ? con->ctlb.tcp->localmss : con->ctlb.tcp->mss;
+    mss = (con->ctlb.tcp->mss > con->ctlb.tcp->localmss) ? \
+                    con->ctlb.tcp->localmss : con->ctlb.tcp->mss;
     unsnd = con->ctlb.tcp->unsndsize;
     if (unsnd > mss)
     {
@@ -457,6 +461,7 @@ int los_mip_tcp_add_seg_recieved(struct mip_conn *conn,
         seg->next = NULL;
         for (tmp = conn->ctlb.tcp->recievd; tmp->next != NULL; tmp = tmp->next);
         tmp->next = seg;
+        conn->rcvcnt++;
     }
     if(conn->state & STAT_RD)
     {
@@ -729,8 +734,8 @@ static int los_mip_tcp_listen_syn(struct netif *dev, struct mip_conn *con,
     con->ctlb.tcp->state = TCP_SYN_RCVD;
     con->ctlb.tcp->rcv_nxt = MIP_NTOHL(tcph->seq) + 1;
     con->ctlb.tcp->snd_nxt = con->ctlb.tcp->isn;
-    //con->ctlb.tcp->lastack = MIP_NTOHL(tcph->ack);
-    con->ctlb.tcp->lastack = 0;
+
+    con->ctlb.tcp->needackcnt = 0;
     con->ctlb.tcp->cwnd = MIP_NTOHS(tcph->wndsize);
     los_mip_tcp_parse_opt(con, tcph);
     ret = los_mip_tcp_send_synack(dev, con, tcph);
@@ -842,27 +847,36 @@ int los_mip_tcp_send_paylaod(struct netif *dev, struct mip_conn *con)
     
     flags = MIP_TCP_PSH | MIP_TCP_ACK;
     
-//    seg = los_mip_tcp_new_seg(con, NULL, 0, (u8_t *)payload, datalen, 
-//                              flags, con->ctlb.tcp->rcv_nxt,
-//                              &dev->ip_addr);
     seg = los_mip_tcp_new_dataseg(con, flags, con->ctlb.tcp->rcv_nxt,
                                   &dev->ip_addr);
     if (NULL != seg)
     {
         ret = los_mip_ipv4_output(dev, seg->p, &dev->ip_addr, 
-                                  &con->ctlb.tcp->remote_ip, 255, 0, MIP_PRT_TCP);
+                                  &con->ctlb.tcp->remote_ip, 
+                                  255, 0, MIP_PRT_TCP);
         if (MIP_OK == ret)
         {
             con->ctlb.tcp->snd_nxt += seg->len;
+            /* if ther are delay acked segmengt , should clear delay ack, 
+               because the ack is carried by the payload segment */
+            los_mip_tcp_clear_ackcnt(con);
         }
-        /* todo: can't delete here ,need store it wait ack */
+        else
+        {
+            /* todo: send segment out failed, maybe need repos 
+               the paylaod position */
+            
+        }
+        /* can't delete here ,need store it wait ack */
         los_mip_tcp_set_tmr_rexmit(con, con->ctlb.tcp->rto);
         los_mip_tcp_add_seg_unacked(con, seg);
+        
         if (con->ctlb.tcp->flag & TCP_NODELAY)
         {
             /* tell tcp stack to send data */
             los_mip_con_send_tcp_msg(con, TCP_SENDI);
         }
+        
         seg = NULL;
     }
 
@@ -938,6 +952,10 @@ static int los_mip_tcp_send_rst(struct netif *dev, struct mip_conn *con)
         seg = NULL;
         /* set connection to closed stated */
         con->ctlb.tcp->state = TCP_CLOSED;
+        if(con->state & STAT_RD)
+        {
+            los_mip_snd_msg_to_con(con, NULL);
+        }
     }
     return ret;
 }
@@ -1037,8 +1055,8 @@ static int los_mip_tcp_process_synack(struct netif *dev, struct mip_conn *con,
         }
         /* send a message to connect function , connect always use block mode */
         los_mip_sem_signal(&con->op_finished);
-        /* record the last acked seqence number */
-        con->ctlb.tcp->lastack = MIP_NTOHL(tcph->ack) - 1;
+
+
     }
     else
     {
@@ -1364,19 +1382,13 @@ static int los_mip_tcp_process_closing(struct netif *dev,
 static inline int los_mip_tcp_get_lastseg_len(struct mip_conn *con)
 {
     int last_seq_len = 0;
-    //struct mip_tcp_seg *seg = NULL;
     if (NULL == con)
     {
         return last_seq_len;
     }
     if (NULL != con->ctlb.tcp->recievd)
     {
-        /* tcp package data length*/
-//        seg = con->ctlb.tcp->recievd;
-//        while(seg->next != NULL)
-//        {
-//            seg = seg->next;
-//        }
+        /* tcp package data length */
         last_seq_len = con->ctlb.tcp->lastseqlen;
     }
     else
@@ -1468,9 +1480,11 @@ static inline int los_mip_tcp_store_data(struct netif *dev,
                         /* todo: need to check if there are data need send */
                         if(MIP_FALSE == los_mip_tcp_check_send_now(con, 0))
                         {
-                            ret = los_mip_tcp_send_ack(dev, con);
+                            if (MIP_TRUE == los_mip_tcp_check_ack_now(con))
+                            {
+                                ret = los_mip_tcp_send_ack(dev, con);
+                            }
                         }
-                        
                     }
                 }
             }
@@ -1643,6 +1657,10 @@ static int los_mip_tcp_process_lastack(struct netif *dev,
          && (ack == con->ctlb.tcp->snd_nxt))
     {
         con->ctlb.tcp->state = TCP_CLOSED;
+        if(con->state & STAT_RD)
+        {
+            los_mip_snd_msg_to_con(con, NULL);
+        }
     }
     else
     {
@@ -1706,8 +1724,8 @@ static int los_mip_tcp_establish(struct netif *dev, struct mip_conn *con,
             los_mip_tcp_send_rst(dev, con);
         }
         #endif
-        /* record the last acked seqence number */
-        con->ctlb.tcp->lastack = MIP_NTOHL(tcph->ack) - 1;
+
+
     }
     else
     {
@@ -1924,7 +1942,7 @@ int los_mip_tcp_input(struct netbuf *p, struct netif *dev,
         else
         {
             /* no connection is created for listen, discard data */
-            //los_mip_tcp_send_rst2(dev, p, src);
+            los_mip_tcp_send_rst2(dev, p, src);
             netbuf_free(p);
             p = NULL;
         }
@@ -2389,7 +2407,10 @@ void los_mip_tcp_do_2msl_timeout(struct netif *dev, struct mip_conn *con)
         los_mip_tcp_disable_ctltmr(TCP_TMR_2MSL, con);
         con->ctlb.tcp->state = TCP_CLOSED;
         /* send a null data to reveive message box */
-        los_mip_snd_msg_to_con(con, NULL);
+        if(con->state & STAT_RD)
+        {
+            los_mip_snd_msg_to_con(con, NULL);
+        }
     }
 }
 
@@ -2439,6 +2460,81 @@ static inline int los_mip_tcp_check_close_now(struct mip_conn *con)
 }
 
 /*****************************************************************************
+ Function    : los_mip_tcp_check_ack_now
+ Description : check if can send tcp ack segment while recieved data 
+ Input       : conn @ tcp connection's pointer
+ Output      : None
+ Return      : MIP_TRUE means can send now,  MIP_FALSE means don't send now
+               need wait timeout to send data.
+ *****************************************************************************/
+static inline int los_mip_tcp_check_ack_now(struct mip_conn *con)
+{
+    int ret = MIP_TRUE;
+    if ((NULL == con) || (NULL == con->ctlb.tcp))
+    {
+        /* no ethernet device or data to deal with */
+        return MIP_FALSE;
+    }
+    con->ctlb.tcp->needackcnt++;
+    /* if current is quick ack mode or we have 2 recieved segments unack it*/
+    if ((con->ctlb.tcp->flag & TCP_QUICKACK)
+        || (con->ctlb.tcp->needackcnt >= 2))
+    {
+        con->ctlb.tcp->needackcnt = 0;
+        ret = MIP_TRUE;
+    }
+    else
+    {
+        ret = MIP_FALSE;
+    }
+    return ret;
+}
+
+/*****************************************************************************
+ Function    : los_mip_tcp_check_delayack
+ Description : check if need send tcp ack segment when 50ms timer timeout 
+ Input       : conn @ tcp connection's pointer
+ Output      : None
+ Return      : MIP_TRUE means can send now,  MIP_FALSE means don't send now
+ *****************************************************************************/
+static inline int los_mip_tcp_check_delayack(struct mip_conn *con)
+{
+    int ret = MIP_TRUE;
+    if ((NULL == con) || (NULL == con->ctlb.tcp))
+    {
+        /* no ethernet device or data to deal with */
+        return MIP_FALSE;
+    }
+    if (con->ctlb.tcp->needackcnt >= 1)
+    {
+        con->ctlb.tcp->needackcnt = 0;
+        ret = MIP_TRUE;
+    }
+    else
+    {
+        ret = MIP_FALSE;
+    }
+    return ret;
+}
+
+/*****************************************************************************
+ Function    : los_mip_tcp_clear_ackcnt
+ Description : set needackcnt to zero while send data segment out 
+ Input       : conn @ tcp connection's pointer
+ Output      : None
+ Return      : None
+ *****************************************************************************/
+static inline void los_mip_tcp_clear_ackcnt(struct mip_conn *con)
+{
+    if ((NULL == con) || (NULL == con->ctlb.tcp))
+    {
+        /* no ethernet device or data to deal with */
+        return ;
+    }
+    con->ctlb.tcp->needackcnt = 0;
+}
+
+/*****************************************************************************
  Function    : los_mip_tcp_timer_callback
  Description : tcp connection's timer callback.
  Input       : uwPar @ tcp connection's address
@@ -2449,7 +2545,7 @@ void los_mip_tcp_timer_callback(u32_t uwPar)
 {
     struct mip_conn *con = NULL;
     struct netif *dev = NULL;
-
+    u8_t *basecnt = NULL;
     con = (struct mip_conn *)uwPar;
     int i = 0;
     u8_t tmr = 0;
@@ -2460,7 +2556,19 @@ void los_mip_tcp_timer_callback(u32_t uwPar)
         /* no ethernet device or data to deal with */
         return ;
     }
+    basecnt = &con->ctlb.tcp->basecnt;
     
+    (*basecnt)--;
+    if (*basecnt)
+    {
+        /* judge if need send delay ack */
+        if (MIP_TRUE == los_mip_tcp_check_delayack(con))
+        {
+            los_mip_tcp_send_ack(dev, con);
+        }
+        return ;
+    }
+    *basecnt = MIP_TCP_INTERNAL_TIMEOUT / MIP_TCP_BASE_TIMER_TIMEOUT;
     for (i = 0; i < (int)TCP_TMR_MAX; i++)
     {
         tmr = con->ctlb.tcp->tmrmask & (0x01 << i);
@@ -2491,6 +2599,11 @@ void los_mip_tcp_timer_callback(u32_t uwPar)
     }
     else
     {
+         /* No data need send, judge if need send delay ack */
+        if (MIP_TRUE == los_mip_tcp_check_delayack(con))
+        {
+            los_mip_tcp_send_ack(dev, con);
+        }
         if (MIP_TRUE == los_mip_tcp_check_close_now(con))
         {
             /* no data need send , and in close_wait state */

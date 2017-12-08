@@ -130,7 +130,7 @@ PACK_STRUCT_END
 #define TCP_KEEPALIVE   0x02 /* need send keep alive message while no data send */
 #define TCP_RXCLOSED    0x04 /* tcp rx closed by shutdown */
 #define TCP_TXCLOSED    0x08 /* tcp tx closed by shutdown */
-//#define TCP_INTIMOUT    0x80 /* tcp internal timer timeout */
+#define TCP_QUICKACK    0x80 /* tcp set quick ack flag */
 #define MIP_TCP_FLAGS   0x3fU
 
 #define MIP_TCP_HTONS(x) MIP_HTONS(x)
@@ -174,6 +174,7 @@ struct tcp_ctl
     u8_t            flag;       /* tcp flags , like nodelay .... */
     u8_t            rtocnt;     /* count of retransmit */
     u8_t            tmrmask;    /* indicate which timer is working */
+    u8_t            basecnt;    /* 50ms base timer count */
     u16_t           lastseqlen; /* the last segment that reviced payload length */
     u16_t           persist;    /* persist timer count */
     u16_t           keepalive;  /* keep alive timer count */
@@ -189,7 +190,7 @@ struct tcp_ctl
     u32_t           isn;        /* Initial Sequence Number */
     u32_t           rcv_nxt;    /* the sequence number that we expect to receive next. */
     u32_t           snd_nxt;    /* next new seqno to be sent */
-    u32_t           lastack;    /* highest acknowledged seqno. */
+    u32_t           needackcnt; /* the segment count that need send ack later */
     struct netbuf   *unsend;    /* the unsend tcp segment list*/
     struct mip_tcp_seg *unacked; /* the unacked tcp segment list*/
     struct mip_tcp_seg *recievd; /* the recieved tcp segment list */
