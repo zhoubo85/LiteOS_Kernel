@@ -35,16 +35,28 @@
 #ifndef _LOS_MIP_NETIF_H
 #define _LOS_MIP_NETIF_H
 
+#include "los_mip_config.h"
 #include "los_mip_typed.h"
 #include "los_mip_ipaddr.h"
 #include "los_mip_netbuf.h"
 
+#ifdef __cplusplus
+#if __cplusplus
+extern "C" {
+#endif /* __cplusplus */
+#endif /* __cplusplus */
+
 struct netif;
 #define MIP_ETH_HWADDR_LEN    6
 #define NETIF_MAX_HWADDR_LEN 6U
+
+#define MIP_DEL_MAC_FILTER 0x00
+#define MIP_ADD_MAC_FILTER 0x01
+
 typedef int (*netif_input_func)(struct netbuf *p, struct netif *inp);
 typedef int (*netif_arpxmit_func)(struct netif *netif, struct netbuf *p, ip_addr_t *ipaddr);
 typedef int (*netif_hwxmit_func)(struct netif *netif, struct netbuf *p);
+typedef int (*netif_igmp_mac_config)(struct netif *netif, ip_addr_t *ip_addr, u8_t flag);
 
 struct netif 
 {
@@ -69,7 +81,11 @@ struct netif
     */
     netif_arpxmit_func arp_xmit;
     netif_hwxmit_func hw_xmit;
-
+#if MIP_EN_IGMP
+    /* multicast address config function, it can add multicast mac filter
+       and clear  multicast mac filter */
+    netif_igmp_mac_config igmp_config;
+#endif
     /*
         This field can be set by the device driver and could point
         to state information for the device. 
@@ -86,8 +102,11 @@ struct netif
     /* descriptive abbreviation */
     char name[2];
     /* number of this interface */
-    u8_t num;
-
+//    u8_t num;
+#if MIP_EN_IGMP
+    /* it point to struct mip_igmp_groups */
+    void *igmp;
+#endif
 };
 
 #define AUTO_IP_PROCESSING 1
@@ -125,6 +144,11 @@ struct netif
 */
 #define NETIF_FLAG_ETHERNET     0x10U
 
+/*
+    If set, the netif has igmp capability
+*/
+#define NETIF_FLAG_IGMP     0x20U
+
 
 int los_mip_netif_add(struct netif *dev);
 int los_mip_netif_remove(struct netif *dev);
@@ -138,4 +162,10 @@ struct netif *los_mip_get_netif_list(void);
 void los_mip_set_default_if(struct netif *dev);
 struct netif * los_mip_get_default_if(void);
 
-#endif
+#ifdef __cplusplus
+#if __cplusplus
+}
+#endif /* __cplusplus */
+#endif /* __cplusplus */
+
+#endif /* _LOS_MIP_NETIF_H */

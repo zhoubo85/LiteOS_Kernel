@@ -37,6 +37,12 @@
 #include "los_mip_ipv4.h"
 #include "los_mip_arp.h"
 
+#ifdef __cplusplus
+#if __cplusplus
+extern "C" {
+#endif /* __cplusplus */
+#endif /* __cplusplus */
+
 /*****************************************************************************
  Function    : los_mip_eth_arp_output
  Description : transmit arp package message
@@ -160,6 +166,29 @@ static int los_mip_is_broadcast_mac(struct eth_mac *mac)
 }
 
 /*****************************************************************************
+ Function    : los_mip_is_multicast_mac
+ Description : judge if the mac is multicast mac address 
+ Input       : mac @ ethnet mac's pointer
+ Output      : None
+ Return      : MIP_TRUE mac is broadcast address, MIP_FALSE not broadcast addr
+ *****************************************************************************/
+static int los_mip_is_multicast_mac(struct eth_mac *mac)
+{
+    if (NULL == mac)
+    {
+        return MIP_FALSE;
+    }
+    if ((mac->hwaddr[0] == 0x01)
+        && (mac->hwaddr[1] == 0x00)
+        && (mac->hwaddr[2] == 0x5e))
+    {
+        return MIP_TRUE;
+    }
+
+    return MIP_FALSE;
+}
+
+/*****************************************************************************
  Function    : los_mip_is_dst_to_us
  Description : judge if the data is to dev's data
  Input       : dev @ net dev's handle which the data come from
@@ -214,10 +243,15 @@ int los_mip_eth_input(struct netbuf *p, struct netif *dev)
     h = (struct eth_hdr *)p->payload;
     type = h->type;
     if ((MIP_TRUE != los_mip_is_broadcast_mac(&h->dst))
+        && (MIP_TRUE != los_mip_is_multicast_mac(&h->dst))
         && (MIP_TRUE != los_mip_is_dst_to_us(dev, &h->dst)))
     {
         netbuf_free(p);
         return MIP_OK;
+    }
+    if (MIP_TRUE == los_mip_is_multicast_mac(&h->dst))
+    {
+        type = h->type;
     }
     /* adjust payload to ip/arp/.... header */
     los_mip_jump_header(p, MIP_ETH_HDR_LEN);
@@ -245,3 +279,9 @@ int los_mip_eth_input(struct netbuf *p, struct netif *dev)
     }
     return ret;
 }
+
+#ifdef __cplusplus
+#if __cplusplus
+}
+#endif /* __cplusplus */
+#endif /* __cplusplus */

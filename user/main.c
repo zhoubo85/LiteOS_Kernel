@@ -34,9 +34,9 @@ static void los_config_network(void)
     ip_addr_t testmask;
     ip_addr_t testgw;
     
-    los_mip_make_ipaddr(&testip,192,168,137,2);
+    los_mip_make_ipaddr(&testip,192,168,1,111);
     los_mip_make_ipaddr(&testmask, 255,255,255,0);
-    los_mip_make_ipaddr(&testgw, 192,168,137,1);
+    los_mip_make_ipaddr(&testgw, 192,168,1,1);
     
     //init tcp/ip stack
     los_mip_tcpip_init(NULL);
@@ -72,7 +72,7 @@ LITE_OS_SEC_TEXT VOID los_mip_test_tcp(void)
         servaddr.sin_port = htons((unsigned short)port);  
         clientlen = sizeof(cliaddr); 
         los_mip_bind(fd, (struct sockaddr*)&servaddr, sizeof(servaddr));
-        #if 1
+        #if 0
         cliaddr.sin_family = AF_INET;  
         cliaddr.sin_addr.s_addr = inet_addr("192.168.137.1");  
         cliaddr.sin_port = htons((unsigned short)rport); 
@@ -117,13 +117,135 @@ LITE_OS_SEC_TEXT VOID los_mip_test_tcp(void)
     }
 }
 
+LITE_OS_SEC_TEXT VOID los_mip_test_tcp_persist(void)
+{
+    int test = 0;
+    int fd = -1;
+    int clientfd = -1; 
+    int port = 5000; 
+    int rport = 6000;
+    int clientlen = 0; 
+    struct sockaddr_in servaddr;  
+    struct sockaddr_in cliaddr; 
+    int on = 1;
+    fd = los_mip_socket(AF_INET, SOCK_STREAM, 0);
+    if (fd >= 0)
+    {
+        memset(&servaddr, 0, sizeof(servaddr));  
+        memset(&cliaddr, 0, sizeof(cliaddr));  
+        servaddr.sin_family = AF_INET;  
+        servaddr.sin_addr.s_addr = htonl(INADDR_ANY);  
+        servaddr.sin_port = htons((unsigned short)port);  
+        clientlen = sizeof(cliaddr); 
+        los_mip_bind(fd, (struct sockaddr*)&servaddr, sizeof(servaddr));
+
+        cliaddr.sin_family = AF_INET;  
+        cliaddr.sin_addr.s_addr = inet_addr("192.168.1.101");  
+        cliaddr.sin_port = htons((unsigned short)rport); 
+        test = los_mip_connect(fd, (struct sockaddr*)&cliaddr, sizeof(cliaddr));
+        if (test != 0)
+        {
+            while(1);
+        }
+        while(1)
+        {
+            test++;
+            testbuf[0] = test + 1;
+            testbuf[1] = test + 2;
+            testbuf[2] = test + 3;
+            testbuf[3] = test + 4;
+            testbuf[4] = test + 5;
+            //test = los_mip_read(fd, testbuf, 50);
+            los_mip_write(fd, testbuf, 200);
+            //LOS_TaskDelay(500);
+        }
+        //LOS_TaskDelay(25000);
+        los_mip_close(fd);
+        //los_mip_read(fd, testbuf, 50);
+
+    }
+}
+
+
+LITE_OS_SEC_TEXT VOID los_mip_test_mulcast(void)
+{
+    int test = 0;
+    int fd = -1;
+    int clientfd = -1; 
+    int port = 5000; 
+    int rport = 6000;
+    int clientlen = 0; 
+    struct sockaddr_in servaddr;    
+    
+    struct ip_mreq testmreq;
+    int ret = 0;
+    int on = 1;
+    fd = los_mip_socket(AF_INET, SOCK_DGRAM, 0);
+    if (fd >= 0)
+    {
+        memset(&servaddr, 0, sizeof(servaddr));  
+        servaddr.sin_family = AF_INET;  
+        servaddr.sin_addr.s_addr = htonl(INADDR_ANY);  
+        servaddr.sin_port = htons((unsigned short)port);  
+
+        los_mip_bind(fd, (struct sockaddr*)&servaddr, sizeof(servaddr));
+        testmreq.imr_multiaddr.S_un.S_addr = inet_addr("224.0.0.88");
+        testmreq.imr_interface.S_un.S_addr = inet_addr("192.168.1.111");
+        ret = los_mip_setsockopt(fd, IPPROTO_IP, IP_ADD_MEMBERSHIP, &testmreq, sizeof (testmreq));
+
+        while(1)
+        {
+            test = los_mip_read(fd, testbuf, 50);
+        }
+        
+    }
+}
+
+LITE_OS_SEC_TEXT VOID los_mip_test_udpsnd(void)
+{
+    int test = 0;
+    int fd = -1;
+    int clientfd = -1; 
+    int port = 5000; 
+    int rport = 6000;
+    int clientlen = 0; 
+    struct sockaddr_in servaddr;  
+    struct sockaddr_in locaaddr;
+    int ret = 0;
+
+    fd = los_mip_socket(AF_INET, SOCK_DGRAM, 0);
+    if (fd >= 0)
+    {
+        memset(&servaddr, 0, sizeof(servaddr));  
+        servaddr.sin_family = AF_INET;  
+        servaddr.sin_addr.s_addr = inet_addr("192.168.1.102");  
+        servaddr.sin_port = htons((unsigned short)port);  
+
+        memset(&locaaddr, 0, sizeof(locaaddr));  
+        locaaddr.sin_family = AF_INET;  
+        locaaddr.sin_addr.s_addr = htonl(INADDR_ANY);  
+        locaaddr.sin_port = htons((unsigned short)port);  
+        
+        los_mip_bind(fd, (struct sockaddr*)&locaaddr, sizeof(locaaddr));
+        while(1)
+        {
+            test = los_mip_sendto(fd, testbuf, 10, 0, (const struct sockaddr *)&servaddr, sizeof(servaddr));
+            LOS_TaskDelay(5000);
+        }
+        
+    }
+}
+
 void los_mip_tcp_task(void)
 {
 	UINT32 uwRet;
 	TSK_INIT_PARAM_S stTaskInitParam;
 
 	(VOID)memset((void *)(&stTaskInitParam), 0, sizeof(TSK_INIT_PARAM_S));
-	stTaskInitParam.pfnTaskEntry = (TSK_ENTRY_FUNC)los_mip_test_tcp;
+	//stTaskInitParam.pfnTaskEntry = (TSK_ENTRY_FUNC)los_mip_test_tcp;
+    //stTaskInitParam.pfnTaskEntry = (TSK_ENTRY_FUNC)los_mip_test_mulcast;
+    //stTaskInitParam.pfnTaskEntry = (TSK_ENTRY_FUNC)los_mip_test_udpsnd;
+    stTaskInitParam.pfnTaskEntry = (TSK_ENTRY_FUNC)los_mip_test_tcp_persist;
 	stTaskInitParam.uwStackSize = 1024;
 	stTaskInitParam.pcName = "tcptest";
 	stTaskInitParam.usTaskPrio = 10;

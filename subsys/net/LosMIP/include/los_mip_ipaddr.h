@@ -37,9 +37,21 @@
 
 #include "los_mip_typed.h"
 
+#ifdef __cplusplus
+#if __cplusplus
+extern "C" {
+#endif /* __cplusplus */
+#endif /* __cplusplus */
+
 #define MIP_ETH_MAC_LEN 6
 #define MIP_IP_ANY ((u32_t)0x00000000)
 #define MIP_IP_BROADCAST    ((u32_t)0xffffffffUL)
+
+/* Get one byte from the 4-byte address */
+#define MIP_ADDR1(ipv4addr) (((u8_t*)(ipv4addr))[0])
+#define MIP_ADDR2(ipv4addr) (((u8_t*)(ipv4addr))[1])
+#define MIP_ADDR3(ipv4addr) (((u8_t*)(ipv4addr))[2])
+#define MIP_ADDR4(ipv4addr) (((u8_t*)(ipv4addr))[3])
 
 #define MIP_IP_DEFAULT_TTL 0x7F
 
@@ -63,5 +75,10 @@ typedef struct ipv4_addr ip_addr_t;
 #define IP_V4_ADDR_SIZE 4
 #define IP_V6_ADDR_SIZE 16
 
+#ifdef __cplusplus
+#if __cplusplus
+}
+#endif /* __cplusplus */
+#endif /* __cplusplus */
 
-#endif
+#endif /* _LOS_MIP_IPADDR_H */

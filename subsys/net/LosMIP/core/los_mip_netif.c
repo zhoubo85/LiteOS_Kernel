@@ -42,6 +42,12 @@
 #include "los_mip_netif.h"
 #include "los_mip_tcpip_core.h"
 
+#ifdef __cplusplus
+#if __cplusplus
+extern "C" {
+#endif /* __cplusplus */
+#endif /* __cplusplus */
+
 /* network device list */
 struct netif *g_netif_list = NULL;
 /* default network device */
@@ -221,3 +227,9 @@ int los_mip_netif_down(struct netif *dev)
     dev->flags &= ~NETIF_FLAG_UP;
     return MIP_OK;
 }
+
+#ifdef __cplusplus
+#if __cplusplus
+}
+#endif /* __cplusplus */
+#endif /* __cplusplus */

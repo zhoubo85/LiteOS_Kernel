@@ -44,6 +44,11 @@
 #include "los_mip_ipv4.h"
 #include "los_mip_udp.h"
 
+#ifdef __cplusplus
+#if __cplusplus
+extern "C" {
+#endif /* __cplusplus */
+#endif /* __cplusplus */
 
 /*****************************************************************************
  Function    : los_mip_udp_input
@@ -93,6 +98,8 @@ int los_mip_udp_input(struct netbuf *p,
             /* check ok now, send data to sockets */
             while (doneflag >= 0)
             {
+                /* todo: there are bugs while use multi net interface, it should copy pbuf 
+                   to every connection that loacal ip is addr_any */
                 tmpcon = los_mip_walk_con(&doneflag);
                 if (NULL == tmpcon)
                 {
@@ -163,7 +170,8 @@ int los_mip_udp_output(struct udp_ctl *udpctl,
     int ret = MIP_OK;
     struct netif *dev = NULL;
     struct udp_hdr *udph;
-    
+    ip_addr_t *routeip = NULL;
+    u8_t ttl = 0;
     if ((NULL == p) || (NULL == udpctl))
     {
         return -MIP_ERR_PARAM;
@@ -172,8 +180,15 @@ int los_mip_udp_output(struct udp_ctl *udpctl,
     if (sizeof(ip_addr_t) == sizeof(struct ipv4_addr))
     {
         /* find the dev to send out the data */
-        dev = los_mip_ip_route(dst_ip);
-        
+        routeip = dst_ip;
+#if MIP_EN_IGMP
+        if (MIP_TRUE == los_mip_is_multicast(dst_ip)
+            && udpctl->mcast_ip.addr != MIP_IP_ANY)
+        {
+            routeip = &udpctl->mcast_ip;
+        }
+#endif
+        dev = los_mip_ip_route(routeip);
         /* add udp header */
         los_mip_jump_header(p, -MIP_UDP_HDR_LEN);
         udph = (struct udp_hdr *)p->payload;
@@ -193,9 +208,21 @@ int los_mip_udp_output(struct udp_ctl *udpctl,
         udph->chksum = los_mip_checksum_pseudo_ipv4(p, (u8_t)MIP_PRT_UDP, 
                                                     p->len, &dev->ip_addr, dst_ip);
         
-        
+        ttl = udpctl->ttl;
+#if MIP_EN_IGMP
+        if (MIP_TRUE == los_mip_is_multicast(dst_ip))
+        {
+            ttl = udpctl->mcast_ttl;
+        }
+#endif
         ret = los_mip_ipv4_output(dev, p, &dev->ip_addr, dst_ip,
-                                  udpctl->ttl, udpctl->tos, MIP_PRT_UDP);
+                                  ttl, udpctl->tos, MIP_PRT_UDP, NULL, 0);
     }
     return ret;
 }
+
+#ifdef __cplusplus
+#if __cplusplus
+}
+#endif /* __cplusplus */
+#endif /* __cplusplus */

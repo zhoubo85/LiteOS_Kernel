@@ -47,6 +47,12 @@
 #include "los_mip_connect.h"
 #include "los_mip_socket.h"
 
+#ifdef __cplusplus
+#if __cplusplus
+extern "C" {
+#endif /* __cplusplus */
+#endif /* __cplusplus */
+
 #define MIP_DHCP_TASK_SIZE 1024
 #define MIP_DHCP_TASK_PRIO 8
 #define MIP_DHCP_MAX_RETRY 4
@@ -141,4 +147,10 @@ int los_mip_dhcp_start(struct netif *ethif, dhcp_callback func );
 int los_mip_dhcp_stop(void);
 int los_mip_dhcp_wait_finish(struct netif *ethif);
 
-#endif
+#ifdef __cplusplus
+#if __cplusplus
+}
+#endif /* __cplusplus */
+#endif /* __cplusplus */
+
+#endif /* _LOS_MIP_DHCP_H */

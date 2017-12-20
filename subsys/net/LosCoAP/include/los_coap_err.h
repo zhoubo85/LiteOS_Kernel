@@ -35,6 +35,12 @@
 #ifndef _LOS_COAP_ERR_H
 #define _LOS_COAP_ERR_H
 
+#ifdef __cplusplus
+#if __cplusplus
+extern "C" {
+#endif /* __cplusplus */
+#endif /* __cplusplus */
+
 #define LOS_COAP_OK                 0
 #define LOS_COAP_NG                 1
 
@@ -64,4 +70,11 @@
 #define LOS_COAP_SOCKET_NETWORK_ERR     16
 #define LOS_COAP_SOCKET_SETOPT_ERR      17
 #define LOS_COAP_SOCKET_ADDRCHK_ERR     19
-#endif
+
+#ifdef __cplusplus
+#if __cplusplus
+}
+#endif /* __cplusplus */
+#endif /* __cplusplus */
+
+#endif /* _LOS_COAP_ERR_H */

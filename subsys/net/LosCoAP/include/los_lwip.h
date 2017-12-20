@@ -45,6 +45,11 @@
 #include "lwip/api.h"
 #include "lwip/sockets.h"
 
+#ifdef __cplusplus
+#if __cplusplus
+extern "C" {
+#endif /* __cplusplus */
+#endif /* __cplusplus */
 
 struct udp_res_t
 {
@@ -52,5 +57,10 @@ struct udp_res_t
     struct sockaddr_in remoteAddr;
 };
 
+#ifdef __cplusplus
+#if __cplusplus
+}
+#endif /* __cplusplus */
+#endif /* __cplusplus */
 
-#endif
+#endif /* _LOS_LWIP_H */

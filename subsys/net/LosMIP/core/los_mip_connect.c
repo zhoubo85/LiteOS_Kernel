@@ -45,6 +45,12 @@
 #include "los_mip_tcpip_core.h"
 #include "los_mip_inet.h"
 
+#ifdef __cplusplus
+#if __cplusplus
+extern "C" {
+#endif /* __cplusplus */
+#endif /* __cplusplus */
+
 /* mip_skt_mgr is the connection manager */
 struct mip_skt_mgr 
 {
@@ -206,7 +212,6 @@ struct mip_conn* los_mip_tcp_get_conn(struct netbuf *buf, ip_addr_t *src,
                    created.
                 */
                 listen = tmp->con;
-//                break;
             }
         }
     }
@@ -303,7 +308,7 @@ int los_mip_remove_port_from_used_list(u16_t port)
  Description : generate a port number that unused.
  Input       : None
  Output      : None
- Return      : u16_t @  a port number that generated.
+ Return      : maxport @  a port number that generated.
  *****************************************************************************/
 u16_t los_mip_generate_port(void)
 {
@@ -330,6 +335,29 @@ u16_t los_mip_generate_port(void)
         maxport = MIP_RANDOM_PORT_BASE_VALUE + maxport % 100;
     }
     return MIP_HTONS(maxport);
+}
+
+/*****************************************************************************
+ Function    : los_mip_conn_init_udpctl
+ Description : init udp connection control block by default value 
+ Input       : pudp @ udp connection control block that need initial
+ Output      : None
+ Return      : MIP_OK @ init ok, other value means failed.
+ *****************************************************************************/
+static int los_mip_conn_init_udpctl(struct udp_ctl *pudp, struct mip_conn *con)
+{
+    (void)con;
+    if (NULL == pudp)
+    {
+        return -MIP_ERR_PARAM;
+    }
+    memset(pudp, 0, sizeof(struct udp_ctl));
+
+    pudp->ttl = MIP_UDP_DEF_TTL;
+#if MIP_EN_IGMP
+    pudp->mcast_ttl = MIP_UDP_DEF_IGMP_TTL;
+#endif
+    return MIP_OK;
 }
 
 /*****************************************************************************
@@ -365,8 +393,8 @@ static int los_mip_conn_init_tcpctl(struct tcp_ctl *ptcp, struct mip_conn *con)
     ptcp->needackcnt = 0;
     ptcp->rcv_nxt = 0;
     ptcp->rto = MIP_TCP_RTO_MIN;
-    ptcp->srtt = 0;
-    ptcp->rttvar = 0;
+    ptcp->srtt = 0x0;
+    ptcp->rttd = 0x0;
     ptcp->snd_nxt = ptcp->isn;
     return MIP_OK;
 }
@@ -469,7 +497,8 @@ struct mip_conn *los_mip_new_conn(enum conn_type type)
         default:
             break;
     }
-    tmp = (struct mip_conn *)los_mpools_malloc(MPOOL_SOCKET, sizeof(struct mip_conn) + pad);
+    tmp = (struct mip_conn *)los_mpools_malloc(MPOOL_SOCKET, 
+                                               sizeof(struct mip_conn) + pad);
     if (NULL != tmp)
     {
         memset(tmp, 0, sizeof(struct mip_conn) + pad);
@@ -489,6 +518,7 @@ struct mip_conn *los_mip_new_conn(enum conn_type type)
         {
             case CONN_UDP:
                 tmp->ctlb.udp = (struct udp_ctl *)((u8_t *)tmp + sizeof(struct mip_conn));
+                los_mip_conn_init_udpctl(tmp->ctlb.udp, tmp);
                 break;
             case CONN_TCP:
                 tmp->ctlb.tcp = (struct tcp_ctl *)((u8_t *)tmp + sizeof(struct mip_conn));
@@ -517,7 +547,6 @@ struct mip_conn *los_mip_clone_conn(struct mip_conn *tcpcon, ip_addr_t dst,
     int i = 0;
     int pad = 0;
     struct mip_conn *tmp = NULL;
-//    int len = 0;
     
     if ((NULL == tcpcon) || (tcpcon->type != CONN_TCP))
     {
@@ -534,7 +563,6 @@ struct mip_conn *los_mip_clone_conn(struct mip_conn *tcpcon, ip_addr_t dst,
     {
         return NULL;
     }
-//    len = sizeof(struct mip_conn);
     
     pad = sizeof(struct tcp_ctl);
     tmp = (struct mip_conn *)los_mpools_malloc(MPOOL_SOCKET, sizeof(struct mip_conn) + pad);
@@ -547,7 +575,7 @@ struct mip_conn *los_mip_clone_conn(struct mip_conn *tcpcon, ip_addr_t dst,
         tmp->backlog = 0;
         if(los_mip_mbox_new(&tmp->recvmbox, MIP_CONN_RCVBOX_SIZE) != MIP_OK) 
         {
-            //recvmbox box create failed
+            /* recvmbox box create failed */
             while(1);
         }
         tmp->recv_timeout = 0xffffffffU;
@@ -732,8 +760,7 @@ int los_mip_delete_conn(struct mip_conn *con)
         los_mip_conn_deinit_tcpctl(con->ctlb.tcp);
         con->ctlb.tcp = NULL;
     }
-    //todo if any msgs in acceptmbox
-    //los_mip_mbox_free(&con->acceptmbox);
+    
     los_mip_sem_free(&con->op_finished);
     los_mpools_free(MPOOL_SOCKET, con);
     
@@ -1101,10 +1128,71 @@ int los_mip_con_set_rcv_timeout(struct mip_conn *con, const void *tm, u32_t len)
     }
     val = (struct timeval *)tm;
     
-    delaytm = val->tv_sec* 1000 + val->tv_usec / 1000;
+    delaytm = (val->tv_sec * 1000) + (val->tv_usec / 1000);
     
     con->recv_timeout = delaytm;
     
+    return MIP_OK;
+}
+
+/*****************************************************************************
+ Function    : los_mip_udp_set_mcast_ttl
+ Description : set udp connection's multicast ttl value 
+ Input       : udpctl @ udp connection private data's pointer
+               ttl @ multicast ttl value
+ Output      : None
+ Return      : MIP_OK process ok, other value mean some error happened.
+ *****************************************************************************/
+int los_mip_udp_set_mcast_ttl(struct udp_ctl *udpctl, u8_t ttl)
+{
+    if (NULL == udpctl)
+    {
+        return -MIP_ERR_PARAM;
+    }
+#if MIP_EN_IGMP
+    udpctl->mcast_ttl = ttl;
+#endif           
+    return MIP_OK;
+}
+
+/*****************************************************************************
+ Function    : los_mip_udp_set_mcast_ip
+ Description : set udp connection's multicast ip address
+ Input       : udpctl @ udp connection private data's pointer
+               mcastip @ connection's multicast ip address
+ Output      : None
+ Return      : MIP_OK process ok, other value mean some error happened.
+ *****************************************************************************/
+int los_mip_udp_set_mcast_ip(struct udp_ctl *udpctl, ip_addr_t *mcastip)
+{
+    if ((NULL == udpctl) || (NULL == mcastip))
+    {
+        return -MIP_ERR_PARAM;
+    }
+#if MIP_EN_IGMP
+    memcpy((void *)&udpctl->mcast_ip.addr, 
+           (void *)&mcastip->addr, 
+           sizeof(ip_addr_t));
+#endif           
+    return MIP_OK;
+}
+
+/*****************************************************************************
+ Function    : los_mip_udp_reset_mcast_ip
+ Description : reset udp connection's multicast ip address
+ Input       : udpctl @ udp connection private data's pointer
+ Output      : None
+ Return      : MIP_OK process ok, other value mean some error happened.
+ *****************************************************************************/
+int los_mip_udp_reset_mcast_ip(struct udp_ctl *udpctl)
+{
+    if (NULL == udpctl)
+    {
+        return -MIP_ERR_PARAM;
+    }
+#if MIP_EN_IGMP
+    memset((void *)&udpctl->mcast_ip.addr, 0, sizeof(ip_addr_t));
+#endif           
     return MIP_OK;
 }
 
@@ -1474,7 +1562,7 @@ int los_mip_tcp_read(struct mip_conn *conn, void *mem, size_t len)
     head = (struct mip_tcp_seg *)tcpmsgs;
     if (NULL == head)
     {
-       /* this means connection closed interal, we need return -1*/
+       /* this means connection closed interal, we need return -1 */
        copylen = -1;
     }
     else
@@ -1638,16 +1726,11 @@ int los_mip_tcp_write(struct mip_conn *conn, const void *mem, size_t len)
         {
             /* copy part data to send buffer */
             wlen = LOS_MIP_TCP_SND_BUF_SIZE - tmpunsnd;
-            if (len > wlen)
-            {
-                ret = los_mip_tcp_write_partly(conn, mem, wlen);
-            }
-            else
+            if (len <= wlen)
             {
                 wlen = len;
-                ret = los_mip_tcp_write_partly(conn, mem, wlen);
             }
-            //ret = los_mip_tcp_write_partly(conn, mem, wlen);
+            ret = los_mip_tcp_write_partly(conn, mem, wlen);
             if (ret != wlen)
             {
                 wlen = ret;
@@ -1793,3 +1876,9 @@ struct mip_conn * los_mip_tcp_get_unaccept_conn(struct mip_conn *listen)
     }
     return NULL;
 }
+
+#ifdef __cplusplus
+#if __cplusplus
+}
+#endif /* __cplusplus */
+#endif /* __cplusplus */

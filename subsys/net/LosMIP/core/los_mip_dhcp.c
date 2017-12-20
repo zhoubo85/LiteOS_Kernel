@@ -37,6 +37,12 @@
 
 #include "los_mip_dhcp.h"
 
+#ifdef __cplusplus
+#if __cplusplus
+extern "C" {
+#endif /* __cplusplus */
+#endif /* __cplusplus */
+
 /* dhcp option buf size */
 #define MIP_OPT_TMP_LEN 16
 
@@ -428,16 +434,21 @@ void los_mip_dhcp_task(void * argument)
     struct netbuf *buf = NULL;
     ip_addr_t tmp_ipaddr;
     
+    if (NULL == dev)
+    {
+        return ;
+    }
+    
     memset(&dev->ip_addr, 0, sizeof(ip_addr_t));
     memset(&dev->netmask, 0, sizeof(ip_addr_t));
     memset(&dev->gw, 0, sizeof(ip_addr_t));
     
     dev->autoipflag = AUTO_IP_PROCESSING;
     
-	memset(&localaddr, 0, sizeof(localaddr));
-	localaddr.sin_family = AF_INET;
-	localaddr.sin_addr.s_addr = htonl(INADDR_ANY);
-	localaddr.sin_port = htons(MIP_DHCP_CLI_PORT);
+    memset(&localaddr, 0, sizeof(localaddr));
+    localaddr.sin_family = AF_INET;
+    localaddr.sin_addr.s_addr = htonl(INADDR_ANY);
+    localaddr.sin_port = htons(MIP_DHCP_CLI_PORT);
     
     con = los_mip_new_conn(CONN_UDP);
     if (NULL == con)
@@ -624,11 +635,11 @@ void los_mip_dhcp_task(void * argument)
 int los_mip_dhcp_start(struct netif *ethif, dhcp_callback func)
 {
     g_dhcp_callback = func;
-	g_dhcp_task_id = los_mip_thread_new("DHCP_TASK", 
-						los_mip_dhcp_task , 
-						(void *)ethif, 
-						MIP_DHCP_TASK_SIZE, 
-						MIP_DHCP_TASK_PRIO);
+    g_dhcp_task_id = los_mip_thread_new("DHCP_TASK", 
+            los_mip_dhcp_task , 
+            (void *)ethif, 
+            MIP_DHCP_TASK_SIZE, 
+            MIP_DHCP_TASK_PRIO);
     return MIP_OK;
 }
 
@@ -664,3 +675,9 @@ int los_mip_dhcp_stop(void)
     los_mip_thread_delete(g_dhcp_task_id);
     return MIP_OK;
 }
+
+#ifdef __cplusplus
+#if __cplusplus
+}
+#endif /* __cplusplus */
+#endif /* __cplusplus */

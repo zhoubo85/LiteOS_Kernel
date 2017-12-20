@@ -39,7 +39,18 @@
 #include "los_mip_netif.h"
 #include "cmsis_os.h"
 
+#ifdef __cplusplus
+#if __cplusplus
+extern "C" {
+#endif /* __cplusplus */
+#endif /* __cplusplus */
 
 int los_mip_dev_eth_init(struct netif *netif);
 
-#endif
+#ifdef __cplusplus
+#if __cplusplus
+}
+#endif /* __cplusplus */
+#endif /* __cplusplus */
+
+#endif /* _LOS_MIP_ETHIF_H */

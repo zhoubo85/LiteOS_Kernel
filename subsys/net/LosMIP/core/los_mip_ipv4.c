@@ -43,8 +43,15 @@
 #include "los_mip_ethernet.h"
 #include "los_mip_ipv4.h"
 #include "los_mip_icmp.h"
+#include "los_mip_igmp.h"
 #include "los_mip_udp.h"
 #include "los_mip_osfunc.h"
+
+#ifdef __cplusplus
+#if __cplusplus
+extern "C" {
+#endif /* __cplusplus */
+#endif /* __cplusplus */
 
 /* ip package header id */
 static u16_t ipv4_id = 0;
@@ -210,6 +217,33 @@ int los_mip_is_multicast(struct ipv4_addr *address)
 }
 
 /*****************************************************************************
+ Function    : los_mip_multicast_for_us
+ Description : judge if dst is for registed igmp group
+ Input       : dst @ the dest of this package
+               dev @ net dev's handle which the data come from
+ Output      : None
+ Return      : MIP_TRUE means the package is for us, MIP_FALSE not for us
+ *****************************************************************************/
+int los_mip_multicast_for_us(struct ipv4_addr *dst, struct netif *dev)
+{
+    struct mip_igmp_group *group;
+    if ((NULL == dst) || (NULL == dev))
+    {
+        return MIP_FALSE;
+    }
+    group = (struct mip_igmp_group *)dev->igmp;
+    while(NULL != group)
+    {
+        if(dst->addr == group->address.addr)
+        {
+            return MIP_TRUE;
+        }
+        group = group->next;
+    }
+    return MIP_FALSE;
+}
+
+/*****************************************************************************
  Function    : los_mip_ipv4_input
  Description : ip package process function.parse the ip header and call upper 
                layer functions to do upper layer process.
@@ -250,12 +284,13 @@ int los_mip_ipv4_input(struct netbuf *p, struct netif *dev)
         return -MIP_IP_LEN_ERR;
     }
     
-    if (iph_len > MIP_IP_MIN_HLEN)
-    {
-        /* have otpions maybe igmp packages , not supported yet */
-        netbuf_free(p);
-        return -MIP_IP_NOT_SUPPORTED;
-    }
+//    if (iph_len > MIP_IP_MIN_HLEN)
+//    {
+//        /* have otpions maybe igmp packages , not supported yet */
+//        netbuf_free(p);
+//        return -MIP_IP_NOT_SUPPORTED;
+//    }
+    
     if (p->len != ip_totallen)
     {
         /* some padding data at the last , all zero data, so we relength the data length */
@@ -271,14 +306,8 @@ int los_mip_ipv4_input(struct netbuf *p, struct netif *dev)
     
     memcpy(&dest, &iph->dest, sizeof(struct ipv4_addr));
     memcpy(&src, &iph->src, sizeof(struct ipv4_addr));
-    /* start to find if this ip package is for us */
-    if (MIP_TRUE == los_mip_is_multicast(&dest))
-    {
-        /* we do not support multicast yet */
-        netbuf_free(p);
-        return -MIP_IP_NOT_SUPPORTED;
-    }
     
+    /* start to find if this ip package is for us */
     if ((dev->flags & NETIF_FLAG_UP)
         && dev->ip_addr.addr == MIP_HTONL(MIP_IP_ANY)
         && iph->proto == MIP_PRT_UDP
@@ -292,8 +321,19 @@ int los_mip_ipv4_input(struct netbuf *p, struct netif *dev)
         netbuf_free(p);
         return -MIP_IP_NOT_FOR_US;
     }
+    if (MIP_TRUE == los_mip_is_multicast(&dest))
+    {
+        if ((!(dev->flags & NETIF_FLAG_IGMP))
+            || (MIP_FALSE == los_mip_multicast_for_us(&dest, dev)))
+        {
+            /* we do not support multicast yet */
+            netbuf_free(p);
+            return -MIP_IP_NOT_FOR_US;
+        }
+    }
     if (dev->ip_addr.addr != MIP_HTONL(MIP_IP_ANY)
         && dest.addr != MIP_HTONL(MIP_IP_BROADCAST)
+        && (MIP_FALSE == los_mip_is_multicast(&dest))
         && dev->ip_addr.addr != dest.addr)
     {
         /* ethernet configed and ip not for us */
@@ -319,6 +359,9 @@ int los_mip_ipv4_input(struct netbuf *p, struct netif *dev)
         case MIP_PRT_ICMP:
             ret = los_mip_icmp_input(p, dev, &iph->src, &iph->dest);
             break;
+        case MIP_PRT_IGMP:
+            ret = los_mip_igmp_input(p, dev, &iph->src, &iph->dest);
+            break;
         default:
             delfalg = 1;
             break;
@@ -342,6 +385,8 @@ int los_mip_ipv4_input(struct netbuf *p, struct netif *dev)
                ttl @ Time To Live
                tos @ type of service
                proto @ upper layer protocol
+               opt @ options for the ip package
+               optlen @ option length
  Output      : None
  Return      : 0(MIP_OK) send out ok, other value means error happended.
  *****************************************************************************/
@@ -349,22 +394,34 @@ int los_mip_ipv4_output(struct netif *dev,
                         struct netbuf *p, ip_addr_t *src, 
                         ip_addr_t *dst,
                         u8_t ttl, u8_t tos,
-                        u8_t proto)
+                        u8_t proto, u8_t *opt, u8_t optlen)
 {
     u16_t iph_len = 0;
     u16_t ip_checksum = 0;
     struct ipv4_hdr *iph = NULL;
-    
+    u8_t optlen_align = 0;
+    u8_t hl = 0;
     if((NULL == p) || (NULL == dev))
     {
         return -MIP_ERR_PARAM;
     }
-    iph_len = sizeof(struct ipv4_hdr);
+    optlen_align = MIP_4BYTE_ALIGN(optlen);
+    iph_len = sizeof(struct ipv4_hdr) + optlen_align;
     los_mip_jump_header(p, -iph_len);
     
     iph = (struct ipv4_hdr *)p->payload;
     memset(iph, 0, iph_len);
-    iph->vhl= MIP_IPV4_NOOPT_VL;
+    if (NULL == opt)
+    {
+        iph->vhl= MIP_IPV4_NOOPT_VL;
+    }
+    else
+    {
+        /* have option to add to package */
+        hl = iph_len / 4;
+        iph->vhl = (MIP_IPV4_NOOPT_VL & 0xf0) | (hl & 0x0f);
+        memcpy((void *)((u8_t *)p->payload + MIP_IP_MIN_HLEN), opt, optlen);
+    }
     iph->tos = tos;
     iph->len = MIP_HTONS(p->len);
     
@@ -399,7 +456,6 @@ int los_mip_ipv4_output(struct netif *dev,
         netbuf_free(p);
         return -MIP_IP_NOT_SUPPORTED;
     }
-
     return dev->arp_xmit(dev, p, dst);
 }
 
@@ -436,3 +492,9 @@ struct netif *los_mip_ip_route(ip_addr_t *dst)
     }
     return dev;
 }
+
+#ifdef __cplusplus
+#if __cplusplus
+}
+#endif /* __cplusplus */
+#endif /* __cplusplus */

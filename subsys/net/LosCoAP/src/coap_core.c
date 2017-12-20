@@ -37,6 +37,11 @@
 #include "../include/los_coap.h"
 #include "../include/los_coap_err.h"
 
+#ifdef __cplusplus
+#if __cplusplus
+extern "C" {
+#endif /* __cplusplus */
+#endif /* __cplusplus */
 
 /*****************************************************************************
  Function    : los_coap_parse_header
@@ -1094,9 +1099,8 @@ int los_coap_add_resource(coap_context_t *ctx, coap_res_t *res)
 
 /*****************************************************************************
  Function    : los_coap_option_check_critical
- Description : add coap private resouce, it contains socket handle ...
- Input       : ctx @ coap connection instance
-               msg @ coap message that need to checkout.
+ Description : check if the option is critical option
+ Input       : msg @ coap message that need to check.
  Output      : None
  Return      : LOS_COAP_OK process ok, other valude means failed.
  *****************************************************************************/
@@ -1446,3 +1450,9 @@ int los_coap_send(coap_context_t *ctx, coap_msg_t *msg)
     }
     return n;
 }
+
+#ifdef __cplusplus
+#if __cplusplus
+}
+#endif /* __cplusplus */
+#endif /* __cplusplus */

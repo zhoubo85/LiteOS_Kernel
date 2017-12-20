@@ -41,9 +41,19 @@
 #include "los_mip_netbuf.h"
 #include "los_mip_ipv4.h"
 
+#ifdef __cplusplus
+#if __cplusplus
+extern "C" {
+#endif /* __cplusplus */
+#endif /* __cplusplus */
+
 static struct arp_table g_arp_tabs[MIP_ARP_TAB_SIZE];
 static struct eth_mac broardcastmac = {0xff, 0xff, 0xff, 0xff, 0xff, 0xff};
 static struct eth_mac zeromac = {0x0, 0x0, 0x0, 0x0, 0x0, 0x0};
+static struct eth_mac multicastmac = {MIP_MULTICAST_ADDR_0, 
+                                      MIP_MULTICAST_ADDR_1, 
+                                      MIP_MULTICAST_ADDR_2, 
+                                      0x0, 0x0, 0x0};
 
 /*****************************************************************************
  Function    : los_mip_update_arp_tab
@@ -142,9 +152,16 @@ int los_mip_arp_xmit(struct netif *dev, struct netbuf *p, ip_addr_t *dstip)
     }
     else if (los_mip_is_multicast(dstip)) 
     {
+#if MIP_EN_IGMP
+        dstmac = &multicastmac;
+        dstmac->hwaddr[3] = MIP_ADDR2((&dstip->addr)) & MIP_MULTICAST_MASK;
+        dstmac->hwaddr[4] = MIP_ADDR3((&dstip->addr));
+        dstmac->hwaddr[5] = MIP_ADDR4((&dstip->addr));
+#else
         /* muticast not support yet, so we free the netbuf */
         netbuf_free(p);
         return -MIP_IP_NOT_SUPPORTED;
+#endif
     }
     else
     {
@@ -234,7 +251,7 @@ int los_mip_arp_request(struct netif *dev, ip_addr_t *ipaddr)
  Description : judge if the arp package's dest is for us 
  Input       : inip @ dest ip
                dev @ net interface handle,which the pacage come from
- Output      : 
+ Output      : None
  Return      : MIP_TRUE package is for us. MIP_FALSE not for us
  *****************************************************************************/
 static int los_mip_arp_for_us(struct netif *dev, u32_t inip)
@@ -251,7 +268,7 @@ static int los_mip_arp_for_us(struct netif *dev, u32_t inip)
  Description : deal with the arp packages recived from the net interface.
  Input       : dev @ net interface handle,which the pacage come from
                p @ the package that recieved.
- Output      : 
+ Output      : None
  Return      : MIP_OK process done.
  *****************************************************************************/
 int los_mip_arp_input(struct netif *dev, struct netbuf *p)
@@ -312,3 +329,9 @@ int los_mip_arp_tab_init(void)
     memset(g_arp_tabs, 0, MIP_ARP_TAB_SIZE*sizeof(struct arp_table));
     return MIP_OK;
 }
+
+#ifdef __cplusplus
+#if __cplusplus
+}
+#endif /* __cplusplus */
+#endif /* __cplusplus */

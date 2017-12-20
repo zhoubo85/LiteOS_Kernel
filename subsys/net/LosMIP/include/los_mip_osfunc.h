@@ -49,6 +49,12 @@
 #include "los_mip_config.h"
 #include "los_mip_typed.h"
 
+#ifdef __cplusplus
+#if __cplusplus
+extern "C" {
+#endif /* __cplusplus */
+#endif /* __cplusplus */
+
 #define MIP_INVALID_MBOX    0
 #define MIP_MAX_DELAY       0xffffffffUL
 #define MIP_OS_TIMEOUT      0xffffffffUL
@@ -101,5 +107,12 @@ int los_mip_is_valid_timer(mip_timer_t id);
 int los_mip_start_timer(mip_timer_t id);
 int los_mip_stop_timer(mip_timer_t id);
 int los_mip_delete_timer(mip_timer_t id);
+
+#ifdef __cplusplus
+#if __cplusplus
+}
+#endif /* __cplusplus */
+#endif /* __cplusplus */
+
 #endif /* _LOS_MIP_OSFUNC_H */
 

@@ -41,6 +41,12 @@
 #include "los_mip_mem.h"
 #include "los_mip_netbuf.h"
 
+#ifdef __cplusplus
+#if __cplusplus
+extern "C" {
+#endif /* __cplusplus */
+#endif /* __cplusplus */
+
 /* store the netbuf's pointer which need wait arp done first */
 static u32_t g_wait_arp_array[LOS_MIP_MAX_WAIT_CON] = {0};
 
@@ -221,3 +227,9 @@ int netbuf_remove_queued(struct netbuf *p)
     }
     return MIP_OK;
 }
+
+#ifdef __cplusplus
+#if __cplusplus
+}
+#endif /* __cplusplus */
+#endif /* __cplusplus */

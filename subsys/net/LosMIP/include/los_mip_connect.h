@@ -43,6 +43,12 @@
 #include "los_mip_udp.h"
 #include "los_mip_tcp.h"
 
+#ifdef __cplusplus
+#if __cplusplus
+extern "C" {
+#endif /* __cplusplus */
+#endif /* __cplusplus */
+
 #define MIP_CONN_NONBLOCK           0x01
 
 #define MIP_CONN_MSG_RESEND_MAX     3
@@ -59,7 +65,6 @@ enum conn_type
     CONN_MAX
 };
 
-
 #define STAT_NONE       0x00 
 #define STAT_LISTEN     0x01 /* TCP listen */ 
 #define STAT_CONNECT    0x02 /* TCP/UDP connect */ 
@@ -67,7 +72,6 @@ enum conn_type
 #define STAT_CLOSE      0x08 /* TCP/UDP Close */ 
 #define STAT_ACCEPT     0x10 /* TCP accept */ 
 #define STAT_MAX
-
 
 struct skt_rcvd_msg
 {
@@ -83,8 +87,6 @@ struct mip_conn
     int socket;
     /* type of the netconn (TCP, UDP or RAW) */
     enum conn_type type;
-    /* current state of the netconn */
-    u8_t state;
     /* the protocol control block */
     union 
     {
@@ -98,10 +100,12 @@ struct mip_conn
     s32_t send_timeout;
     int recv_timeout;
     short last_err;
+    /* current state of the netconn */
+    u8_t state;
     u8_t flags;
     u8_t rcvcnt;
     u8_t ref;           /* connection reference count */
-    u16_t backlog;       /* record the backlog and un-accept count value */
+    u16_t backlog;      /* record the backlog and un-accept count value */
     struct mip_msg *cur_msg;
     struct skt_rcvd_msg *rcvdata;
 };
@@ -180,6 +184,10 @@ struct skt_del_msg *los_mip_new_delmsg(struct mip_conn *con);
 int los_mip_snd_delmsg(struct mip_conn *con);
 int los_mip_udp_bind(struct udp_ctl *udpctl, 
                      u32_t *dst_ip, u16_t dst_port);
+int los_mip_udp_set_mcast_ttl(struct udp_ctl *udpctl, u8_t ttl);
+int los_mip_udp_set_mcast_ip(struct udp_ctl *udpctl, 
+                             ip_addr_t *mcastip);
+int los_mip_udp_reset_mcast_ip(struct udp_ctl *udpctl);
 int los_mip_conn_bind(struct mip_conn *conn, u32_t *dst_ip, 
                       u16_t dst_port);
 int los_mip_tcp_listen(struct mip_conn *conn, int backlog);
@@ -206,4 +214,11 @@ int los_mip_tcp_quickack_enable(struct mip_conn *conn);
 int los_mip_tcp_quickack_disable(struct mip_conn *conn);
 int los_mip_tcp_do_shutdown(struct mip_conn *conn, int how);
 struct mip_conn * los_mip_tcp_get_unaccept_conn(struct mip_conn *listen);
-#endif
+
+#ifdef __cplusplus
+#if __cplusplus
+}
+#endif /* __cplusplus */
+#endif /* __cplusplus */
+
+#endif /* _LOS_MIP_CONNECT_H */

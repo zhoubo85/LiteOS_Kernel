@@ -51,6 +51,12 @@
 #include "los_mip_typed.h"
 #include "los_mip_err.h"
 
+#ifdef __cplusplus
+#if __cplusplus
+extern "C" {
+#endif /* __cplusplus */
+#endif /* __cplusplus */
+
 /*****************************************************************************
  Function    : los_mip_mbox_new
  Description : create message queue for mip core process
@@ -95,7 +101,7 @@ int los_mip_mbox_new(mip_mbox_t *mbox, int size)
  *****************************************************************************/
 int los_mip_mbox_free(mip_mbox_t *mbox)
 {
-	int errcnt = 0;
+    int errcnt = 0;
 
     if((NULL == mbox) || (MIP_INVALID_MBOX == *mbox))
     {
@@ -249,7 +255,7 @@ int los_mip_mbox_fetch(mip_mbox_t *mbox, void **msg, u32_t timeout)
 int los_mip_mbox_tryfetch(mip_mbox_t *mbox, void **msg)
 {
     int ret = MIP_OK;
-	
+  
     ret = los_mip_mbox_fetch(mbox, msg, 0);
     return ret;
 }
@@ -697,11 +703,11 @@ u32_t los_mip_cur_tm(void)
  *****************************************************************************/
 u32_t los_mip_random(void)
 {
-	unsigned int ret;
-	LOS_TickCountGet();
-	srand((unsigned)LOS_TickCountGet());
-	ret = rand() % RAND_MAX;
-	return ret;
+    unsigned int ret;
+    LOS_TickCountGet();
+    srand((unsigned)LOS_TickCountGet());
+    ret = rand() % RAND_MAX;
+    return ret;
 }
 
 /*****************************************************************************
@@ -829,3 +835,9 @@ int los_mip_delete_timer(mip_timer_t id)
     }
     return MIP_TRUE;
 }
+
+#ifdef __cplusplus
+#if __cplusplus
+}
+#endif /* __cplusplus */
+#endif /* __cplusplus */

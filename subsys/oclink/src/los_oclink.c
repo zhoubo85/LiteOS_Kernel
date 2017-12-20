@@ -43,6 +43,12 @@
 #include "los_coap_err.h"
 #include "los_oclink.h"
 
+#ifdef __cplusplus
+#if __cplusplus
+extern "C" {
+#endif /* __cplusplus */
+#endif /* __cplusplus */
+
 #define OCLINK_MAX_SEND_RETRY 500
 
 /* oclink local resources */
@@ -610,3 +616,9 @@ int los_oclink_stop(void)
     g_oclink_taskid = 0;
     return OCLINK_OK;
 }
+
+#ifdef __cplusplus
+#if __cplusplus
+}
+#endif /* __cplusplus */
+#endif /* __cplusplus */

@@ -45,8 +45,18 @@
 #include "los_mip_netif.h"
 #include "los_mip_ipaddr.h"
 
+#ifdef __cplusplus
+#if __cplusplus
+extern "C" {
+#endif /* __cplusplus */
+#endif /* __cplusplus */
 
 #define MIP_ARP_HEADER_LEN 28
+
+#define MIP_MULTICAST_ADDR_0 0x01
+#define MIP_MULTICAST_ADDR_1 0x00
+#define MIP_MULTICAST_ADDR_2 0x5e
+#define MIP_MULTICAST_MASK 0x7f
 
 /* ARP hwtype values */
 enum mip_arp_hwtype 
@@ -93,4 +103,10 @@ int los_mip_arp_tab_init(void);
 int los_mip_find_arp_entry(struct ipv4_addr *ip, 
                            struct eth_mac **dstmac);
 
-#endif
+#ifdef __cplusplus
+#if __cplusplus
+}
+#endif /* __cplusplus */
+#endif /* __cplusplus */
+
+#endif /* _LOS_MIP_ARP_H */

@@ -45,6 +45,12 @@
 #include "los_mip_ipv4.h"
 #include "los_mip_udp.h"
 
+#ifdef __cplusplus
+#if __cplusplus
+extern "C" {
+#endif /* __cplusplus */
+#endif /* __cplusplus */
+
 #define INADDR_ANY MIP_IP_ANY
 
 struct in_addr
@@ -94,4 +100,10 @@ u32_t ntohl(u32_t n);
 
 u32_t inet_addr(const char *ipaddr);
 
-#endif
+#ifdef __cplusplus
+#if __cplusplus
+}
+#endif /* __cplusplus */
+#endif /* __cplusplus */
+
+#endif /* _LOS_MIP_INET_H */

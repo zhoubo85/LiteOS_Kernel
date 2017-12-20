@@ -18,7 +18,7 @@ core ： 本文件夹下存放协议的核心代码实现
 
 driver： 存放网口的驱动程序
 
-include：存放协议使用的酥油头文件
+include：存放协议使用的所有头文件
 
 sys：存放于操作系统密切相关的函数的实现文件，比如内存池管理，消息队列，任务管理、信号量等等。
 
@@ -59,6 +59,17 @@ sys：存放于操作系统密切相关的函数的实现文件，比如内存�
 		los_mip_set_default_if(&g_stm32f746);
 
 ### UDP socket 使用
+- 使用的步骤如下
+
+  1：创建udp socket
+
+  2：bind一个本地接口（注：步骤为可选步骤，可以不执行）
+  
+  3：设置socket的工作模式（比如非阻塞模式，默认为阻塞模式）（注：步骤为可选步骤，可以不执行）
+
+  4：调用 读写接口进行读写操作。
+
+  说明：mip的使用和linux下的socket的接口使用类似，请参考linux的socket编程相关内容。
 
 - 创建socket并接收发送数据，示例如下
 
@@ -96,6 +107,21 @@ sys：存放于操作系统密切相关的函数的实现文件，比如内存�
     }
 
 ### TCP socket使用
+
+- 使用的步骤如下
+
+  1：创建tcp socket
+
+  2：bind一个本地接口
+  
+  3：设置socket的工作模式（比如非阻塞模式，默认为阻塞模式）（注：步骤为可选步骤，可以不执行）
+
+  4：调用accept接口或者connect接口进行连接
+
+  5：调用 读写接口进行读写操作。
+
+  说明：mip的使用和linux下的socket的接口使用类似，请参考linux的socket编程相关内容。
+
 - 简单创建tcp client并接收发送数据，示例如下
 
 		int iMode = 1;  
@@ -192,6 +218,26 @@ sys：存放于操作系统密切相关的函数的实现文件，比如内存�
 		  TCP_NODELAY
           TCP_QUICKACK
 
+
+		function：int los_mip_setsockopt(int s, int level, 
+                       int optname, 
+                       const void *optval, 
+                       socklen_t optlen)
+		level：
+		SOL_SOCKET
+			optname：
+            SO_RCVTIMEO
+		IPPROTO_TCP
+			optname：
+			TCP_NODELAY
+			TCP_QUICKACK
+		IPPROTO_IP
+			optname：
+			IP_MULTICAST_TTL
+			IP_MULTICAST_IF
+			IP_ADD_MEMBERSHIP
+			IP_DROP_MEMBERSHIP
+
 ## LosMIP网口驱动添加
 
 - 添加一个网口驱动需要实现如下接口
@@ -216,6 +262,9 @@ sys：存放于操作系统密切相关的函数的实现文件，比如内存�
 
 - los_mip_osfunc.c 主要实现了任务创建，销毁、消息队列的创建、读写、信号量互斥锁等进程通讯接口的实现。
 在移植LosMIP时，必须将相关的接口替换成新的操作系统下的接口。
+
+
+
 
 
 

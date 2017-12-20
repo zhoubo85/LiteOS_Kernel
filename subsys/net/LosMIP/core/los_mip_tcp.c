@@ -44,6 +44,11 @@
 #include "los_mip_ipv4.h"
 #include "los_mip_tcp.h"
 
+#ifdef __cplusplus
+#if __cplusplus
+extern "C" {
+#endif /* __cplusplus */
+#endif /* __cplusplus */
 
 int los_mip_tcp_delte_seg(struct mip_tcp_seg *seg);
 static int los_mip_tcp_send_synack(struct netif *dev, 
@@ -83,35 +88,41 @@ static inline void los_mip_tcp_clear_ackcnt(struct mip_conn *con);
  Output      : None
  Return      : tmp @ tcp segment pointer, if failed return NULL
  *****************************************************************************/
-void los_mip_tcp_update_rto(struct mip_conn *con, u32_t currtt)
+void los_mip_tcp_update_rto(struct mip_conn *con, s32_t rttm)
 {
-    //u32_t tmprtt = 0;
-    u32_t tmprto = 0;
-    u32_t tmprttvar = 0;
-    u32_t tmpsrtt = 0;
+    s32_t tmprto = 0;
+    s32_t tmprttd = 0;
+    s32_t tmpsrtt = 0;
     
     if ((NULL == con) || (NULL == con->ctlb.tcp))
     {
         return ;
     }
-    tmprttvar = con->ctlb.tcp->rttvar;
+    tmprttd = con->ctlb.tcp->rttd;
     tmprto = con->ctlb.tcp->rto;
-    if (tmprttvar != 0)
+    if (tmprttd != 0)
     {
         /* not first rto calc */
         tmpsrtt = con->ctlb.tcp->srtt;
-        tmprttvar = (3 * tmprttvar / 4) + ((tmpsrtt - currtt) / 4);
-        tmpsrtt = (7 * tmpsrtt / 8) + (currtt / 8);
-        tmprto = tmpsrtt + MIP_MAX(MIP_TCP_RTO_MIN, (tmprttvar * 4));
+        tmpsrtt = (7 * tmpsrtt / 8) + (rttm / 8);
+        if (rttm < tmpsrtt)
+        {
+            tmprttd = (3 * tmprttd / 4) + ((tmpsrtt - rttm) / 4);
+        }
+        else
+        {
+            tmprttd = (3 * tmprttd / 4) + ((rttm - tmpsrtt) / 4);
+        }
     }
     else
     {
         /* first rto calc */
-        tmpsrtt = currtt;
-        tmprttvar = currtt / 2;
-        tmprto = tmpsrtt + MIP_MAX(MIP_TCP_RTO_MIN, (4 * tmprttvar)); 
+        tmpsrtt = rttm;
+        tmprttd = rttm / 2;
     }
-    con->ctlb.tcp->rttvar = tmprttvar;
+    tmprto = tmpsrtt + MIP_MAX(MIP_TCP_RTO_MIN, (4 * tmprttd)); 
+    
+    con->ctlb.tcp->rttd = tmprttd;
     con->ctlb.tcp->rto = tmprto;
     con->ctlb.tcp->srtt = tmpsrtt;
 }
@@ -165,9 +176,9 @@ struct mip_tcp_seg *los_mip_tcp_new_seg(struct mip_conn *con,
         netbuf_free(p);
         return NULL;
     }
-    tmp->sndtm = los_mip_cur_tm();
-    tmp->rearpcnt = 0;
-    tmp->rexmitcnt = 0;
+    
+//    tmp->rearpcnt = 0;
+//    tmp->rexmitcnt = 0;
     memset(tmp, 0, sizeof(struct mip_tcp_seg));
     tmp->p = p;
     if (NULL != opts)
@@ -293,7 +304,7 @@ struct mip_tcp_seg *los_mip_tcp_new_dataseg(struct mip_conn *con,
         len = unsnd;
     }
     /* send data's length should not > remote's congestion window size */
-    if (len > con->ctlb.tcp->cwnd)
+    if (len >= con->ctlb.tcp->cwnd)
     {
         len = con->ctlb.tcp->cwnd;
 
@@ -423,16 +434,17 @@ int los_mip_tcp_add_seg_unacked(struct mip_conn *conn,
     {
         return -MIP_ERR_PARAM;
     }
+    seg->next = NULL;
     if (NULL == conn->ctlb.tcp->unacked)
     {
         conn->ctlb.tcp->unacked = seg;
     }
     else
     {
-        seg->next = NULL;
         for (tmp = conn->ctlb.tcp->unacked; tmp->next != NULL; tmp = tmp->next);
         tmp->next = seg;
     }
+    seg->sndtm = los_mip_cur_tm();
     return MIP_OK;
 }
 
@@ -480,28 +492,34 @@ int los_mip_tcp_add_seg_recieved(struct mip_conn *conn,
 int los_mip_tcp_remove_seg_unacked(struct mip_conn *conn)
 {
     struct mip_tcp_seg *tmp = NULL;
+    struct mip_tcp_seg *cur = NULL;
     int ret = MIP_OK; 
-    u32_t rtt = 0;
+    s32_t rtt = 0;
+    s32_t curtm = 0;
     if (NULL == conn)
     {
         return -MIP_ERR_PARAM;
     }
     if (NULL != conn->ctlb.tcp->unacked)
     {
+        
+        cur = conn->ctlb.tcp->unacked;
         tmp = conn->ctlb.tcp->unacked->next;
-        if (los_mip_cur_tm() > tmp->sndtm)
+        curtm = los_mip_cur_tm();
+        if (curtm > cur->sndtm)
         {
-            rtt = los_mip_cur_tm() - tmp->sndtm;
+            rtt = curtm - cur->sndtm;
             /* call rtt update function */
         }
         else
         {
-            rtt = los_mip_cur_tm() + 0xfffffffFU - tmp->sndtm;
+            rtt = curtm + 0xfffffffFU - cur->sndtm;
         }
         /* update connection's rto */
         los_mip_tcp_update_rto(conn, rtt);
         
-        ret = los_mip_tcp_delte_seg(conn->ctlb.tcp->unacked);
+        ret = los_mip_tcp_delte_seg(cur);
+        cur = NULL;
         conn->ctlb.tcp->unacked = tmp;
         
         /* tell core task to send data */
@@ -524,7 +542,8 @@ int los_mip_tcp_remove_seg_mulunacked(struct mip_conn *conn, u32_t ack)
     struct mip_tcp_seg *cur = NULL;
     struct mip_tcp_seg *next = NULL;
     int ret = MIP_OK; 
-    u32_t rtt = 0;
+    s32_t rtt = 0;
+    s32_t curtm = 0;
     if (NULL == conn)
     {
         return -MIP_ERR_PARAM;
@@ -534,18 +553,25 @@ int los_mip_tcp_remove_seg_mulunacked(struct mip_conn *conn, u32_t ack)
     while (NULL != cur)
     {
         next = cur->next;
-        if (ack >= (MIP_NTOHL(cur->tcphdr->seq) + cur->len))
+        if (ack == MIP_NTOHL(cur->tcphdr->seq))
+        {
+            /* this is zero window probe ack, so  */
+            ret = los_mip_tcp_delte_seg(cur);
+            cur = NULL;
+        }
+        else if (ack >= (MIP_NTOHL(cur->tcphdr->seq) + cur->len))
         {
             if (ack == (MIP_NTOHL(cur->tcphdr->seq) + cur->len))
             {
-                if (los_mip_cur_tm() > cur->sndtm)
+                curtm = los_mip_cur_tm();
+                if (curtm > cur->sndtm)
                 {
-                    rtt = los_mip_cur_tm() - cur->sndtm;
+                    rtt = curtm - cur->sndtm;
                     /* call rtt update function */
                 }
                 else
                 {
-                    rtt = los_mip_cur_tm() + 0xfffffffFU - cur->sndtm;
+                    rtt = curtm + 0xfffffffFU - cur->sndtm;
                 }
                 /* update connection's rto */
                 los_mip_tcp_update_rto(conn, rtt);
@@ -594,7 +620,8 @@ static int los_mip_tcp_send_ack(struct netif *dev, struct mip_conn *con)
     if (NULL != seg)
     {
         ret = los_mip_ipv4_output(dev, seg->p, &dev->ip_addr, 
-                                  &con->ctlb.tcp->remote_ip, 255, 0, MIP_PRT_TCP);
+                                  &con->ctlb.tcp->remote_ip, 255, 0, 
+                                  MIP_PRT_TCP, NULL, 0);
         /* only ack message don't need add to un acked list */
         los_mip_tcp_delte_seg(seg);
         seg = NULL;
@@ -627,7 +654,8 @@ static int los_mip_tcp_send_zeroprobe(struct netif *dev, struct mip_conn *con)
     if (NULL != seg)
     {
         ret = los_mip_ipv4_output(dev, seg->p, &dev->ip_addr, 
-                                  &con->ctlb.tcp->remote_ip, 255, 0, MIP_PRT_TCP);
+                                  &con->ctlb.tcp->remote_ip, 255, 0, 
+                                  MIP_PRT_TCP, NULL, 0);
         /* zero window probe segment, need add to retransmit list */
         los_mip_tcp_add_seg_unacked(con, seg);
         seg = NULL;
@@ -772,7 +800,8 @@ int los_mip_tcp_send_syn(struct netif *dev, struct mip_conn *con)
         //con->ctlb.tcp->snd_nxt++;
         //dev->ip_addr.addr
         ret = los_mip_ipv4_output(dev, seg->p, &dev->ip_addr, 
-                                  &con->ctlb.tcp->remote_ip, 255, 0, MIP_PRT_TCP);
+                                  &con->ctlb.tcp->remote_ip, 255, 0, 
+                                  MIP_PRT_TCP, NULL, 0);
         if (ret == MIP_OK)
         {
             con->ctlb.tcp->snd_nxt++;
@@ -816,7 +845,8 @@ int los_mip_tcp_send_synack(struct netif *dev, struct mip_conn *con,
     {
         //con->ctlb.tcp->snd_nxt++;
         ret = los_mip_ipv4_output(dev, seg->p, &dev->ip_addr, 
-                                  &con->ctlb.tcp->remote_ip, 255, 0, MIP_PRT_TCP);
+                                  &con->ctlb.tcp->remote_ip, 255, 0, 
+                                  MIP_PRT_TCP, NULL, 0);
         if (MIP_OK == ret)
         {
             con->ctlb.tcp->snd_nxt++;
@@ -853,7 +883,7 @@ int los_mip_tcp_send_paylaod(struct netif *dev, struct mip_conn *con)
     {
         ret = los_mip_ipv4_output(dev, seg->p, &dev->ip_addr, 
                                   &con->ctlb.tcp->remote_ip, 
-                                  255, 0, MIP_PRT_TCP);
+                                  255, 0, MIP_PRT_TCP, NULL, 0);
         if (MIP_OK == ret)
         {
             con->ctlb.tcp->snd_nxt += seg->len;
@@ -903,7 +933,8 @@ int los_mip_tcp_send_fin(struct netif *dev, struct mip_conn *con)
     if (NULL != seg)
     {
         ret = los_mip_ipv4_output(dev, seg->p, &dev->ip_addr, 
-                                  &con->ctlb.tcp->remote_ip, 255, 0, MIP_PRT_TCP);
+                                  &con->ctlb.tcp->remote_ip, 255, 0, 
+                                  MIP_PRT_TCP, NULL, 0);
         if (ret == MIP_OK)
         {
             con->ctlb.tcp->snd_nxt++;
@@ -937,25 +968,33 @@ static int los_mip_tcp_send_rst(struct netif *dev, struct mip_conn *con)
         return -MIP_ERR_PARAM;
     }
     /* the connection is for the package , so we don't need jugde it */
-    flags = MIP_TCP_RST;
+    flags = MIP_TCP_RST | MIP_TCP_ACK;
     seg = los_mip_tcp_new_seg(con, NULL, 0, NULL, 0, flags, 
                               con->ctlb.tcp->rcv_nxt,
                               &dev->ip_addr);
     if (NULL != seg)
     {
         //con->ctlb.tcp->snd_nxt++;
-        con->ctlb.tcp->snd_nxt = 0;
-        ret = los_mip_ipv4_output(dev, seg->p, &dev->ip_addr, 
-                                  &con->ctlb.tcp->remote_ip, 255, 0, MIP_PRT_TCP);
-        /* todo: reset message send, so we need close the connecttion */
-        los_mip_tcp_delte_seg(seg);
-        seg = NULL;
         /* set connection to closed stated */
         con->ctlb.tcp->state = TCP_CLOSED;
+        if (MIP_TRUE == los_mip_is_valid_timer(con->ctlb.tcp->tmr))
+        {
+            los_mip_stop_timer(con->ctlb.tcp->tmr);
+            con->ctlb.tcp->tmrmask = 0x00;
+        }
         if(con->state & STAT_RD)
         {
             los_mip_snd_msg_to_con(con, NULL);
         }
+        /* send reset message */
+        con->ctlb.tcp->snd_nxt = 0;
+        ret = los_mip_ipv4_output(dev, seg->p, &dev->ip_addr, 
+                                  &con->ctlb.tcp->remote_ip, 255, 0, 
+                                  MIP_PRT_TCP, NULL, 0);
+        /* todo: reset message send, so we need close the connecttion */
+        los_mip_tcp_delte_seg(seg);
+        seg = NULL;
+
     }
     return ret;
 }
@@ -1004,7 +1043,7 @@ static int los_mip_tcp_send_rst2(struct netif *dev, struct netbuf *p,
     p->len = MIP_TCP_HDR_LEN;
     tmpsrc.addr = src->addr;
     ret = los_mip_ipv4_output(dev, p, &dev->ip_addr, 
-                                  &tmpsrc, 255, 0, MIP_PRT_TCP);
+                                  &tmpsrc, 255, 0, MIP_PRT_TCP, NULL, 0);
     return ret;
 }
 
@@ -1452,7 +1491,12 @@ static inline int los_mip_tcp_store_data(struct netif *dev,
             {
                 /* remote congistion window not full , can send data */
                 los_mip_tcp_disable_ctltmr(TCP_TMR_P, con);
+                //los_mip_tcp_remove_seg_unacked(con);
             }
+//            if (!tcph->wndsize)
+//            {
+//                /* remote buffer is full */
+//            }
             con->ctlb.tcp->cwnd = MIP_NTOHS(tcph->wndsize);
             if((flags == MIP_TCP_FLAGS_PSH_ACK)
                 || (flags == MIP_TCP_FLAGS_ACK))
@@ -1461,8 +1505,11 @@ static inline int los_mip_tcp_store_data(struct netif *dev,
                 if (ack == con->ctlb.tcp->snd_nxt)
                 {
                     /* remove unacked segment */
-                    //los_mip_tcp_remove_seg_unacked(con);
                     los_mip_tcp_remove_seg_mulunacked(con, ack);
+//                    if (NULL == con->ctlb.tcp->unacked)
+//                    {
+//                        los_mip_tcp_disable_ctltmr(TCP_TMR_REXMIT, con);
+//                    }
                 }
                 /* add data to tcp recieved list */
                 payloadlen = p->len - MIP_TCPH_HDRLEN(tcph) * 4;
@@ -1530,11 +1577,11 @@ static int los_mip_tcp_process_establish(struct netif *dev,
     ack = MIP_NTOHL(tcph->ack);
 //    int last_seq_len = 0;
     u8_t freeflag = 1;
-    if (tcph->wndsize)
+    if (flags & MIP_TCP_RST)
     {
-        /* start persit timer */
+        los_mip_tcp_send_rst(dev, con);
     }
-    if ((MIP_TCP_FLAGS_SYN_ACK == flags)
+    else if ((MIP_TCP_FLAGS_SYN_ACK == flags)
         && (con->ctlb.tcp->rcv_nxt == MIP_NTOHL(tcph->seq) + 1))
     {
         /*retransmit syn_ack, we need send ack */
@@ -2084,11 +2131,15 @@ int los_mip_tcp_process_upper_msg(void *msg)
                internal timer timeout, and datalen < mss , 
                send data immediately 
             */
-            los_mip_tcp_send_paylaod(dev, tcpmsg->con);
+            if (TCP_CLOSED != tcpmsg->con->ctlb.tcp->state)
+            {
+                los_mip_tcp_send_paylaod(dev, tcpmsg->con);
+            }
             break;
         case TCP_SENDI:
             /* send data immediately */
-            if (MIP_TRUE == los_mip_tcp_check_send_now(tcpmsg->con, 0))
+            if ((TCP_CLOSED != tcpmsg->con->ctlb.tcp->state) 
+                && (MIP_TRUE == los_mip_tcp_check_send_now(tcpmsg->con, 0)))
             {
                 /* send data immediately */
                 los_mip_tcp_send_paylaod(dev, tcpmsg->con);
@@ -2294,6 +2345,31 @@ static inline int los_mip_tcp_disable_ctltmr(enum tcp_tmr_type type,
 }
 
 /*****************************************************************************
+ Function    : los_mip_tcp_check_zeroprobe_segment
+ Description : check if it is a zero window probe segment
+ Input       : seg @ tcp segment's pointer
+ Output      : None
+ Return      : MIP_TRUE means the segment is zero window probe segment.
+               other value means not.
+ *****************************************************************************/
+int los_mip_tcp_check_zeroprobe_segment(struct mip_tcp_seg *seg)
+{
+//    struct ipv4_hdr *iph = NULL;
+    u8_t flag = 0;
+    if (NULL == seg)
+    {
+        return MIP_FALSE;
+    }
+    flag = MIP_TCPH_FLAGS(seg->tcphdr);
+    if (seg->len == 1
+        && (MIP_TCP_FLAGS_ACK == flag))
+    {
+        return MIP_TRUE;
+    }
+    return MIP_FALSE;
+}
+
+/*****************************************************************************
  Function    : los_mip_tcp_do_retransmit
  Description : process retransmit package when retransmit timer timeout
  Input       : con @ tcp connection's pointer
@@ -2333,7 +2409,9 @@ void los_mip_tcp_do_retransmit(struct netif *dev, struct mip_conn *con)
         iph_len = 4 * MIP_IPHLEN(iph->vhl);
         los_mip_jump_header(seg->p, iph_len);
         los_mip_ipv4_output(dev, seg->p, &dev->ip_addr, 
-                              &con->ctlb.tcp->remote_ip, 255, 0, MIP_PRT_TCP);
+                              &con->ctlb.tcp->remote_ip, 255, 0, 
+                              MIP_PRT_TCP, NULL, 0);
+        seg->sndtm = los_mip_cur_tm();
         /* if the first package not send out ,we give another chance */
         con->ctlb.tcp->rtocnt++;
         seg->rearpcnt++;
@@ -2354,6 +2432,11 @@ void los_mip_tcp_do_retransmit(struct netif *dev, struct mip_conn *con)
     {
         los_mip_tcp_disable_ctltmr(TCP_TMR_REXMIT, con);
         con->ctlb.tcp->rtocnt = 0;
+        /* retransmit failed, send reset, so recount send next value */
+        if (MIP_TRUE != los_mip_tcp_check_zeroprobe_segment(seg))
+        {
+            con->ctlb.tcp->snd_nxt -= seg->len;
+        }
         /* send reset message and tell upper layer tcp closed */
         los_mip_tcp_send_rst(dev, con);
         /* remove first unacked buf */
@@ -2430,9 +2513,16 @@ void los_mip_tcp_do_persit_timeout(struct netif *dev, struct mip_conn *con)
     con->ctlb.tcp->persist--;
     if (!con->ctlb.tcp->persist)
     {
-        los_mip_tcp_send_zeroprobe(dev, con);
-        /* reset the persit timeout */
-        los_mip_tcp_set_tmr_persit(con, MIP_TCP_PERSIST_TIMEOUT);
+        if (NULL == con->ctlb.tcp->unacked)
+        {
+            los_mip_tcp_send_zeroprobe(dev, con);
+            /* reset the persit timeout */
+            los_mip_tcp_set_tmr_persit(con, MIP_TCP_PERSIST_TIMEOUT);
+        }
+        else
+        {
+            los_mip_tcp_disable_ctltmr(TCP_TMR_P, con);
+        }
     }
 }
 
@@ -2592,24 +2682,33 @@ void los_mip_tcp_timer_callback(u32_t uwPar)
                 break;
         }
     }
-    if (MIP_TRUE == los_mip_tcp_check_send_now(con, 1))
+    if (TCP_CLOSED != con->ctlb.tcp->state)
     {
-        /* send data immediately */
-        los_mip_con_send_tcp_msg(con, TCP_SENDD);
-    }
-    else
-    {
-         /* No data need send, judge if need send delay ack */
-        if (MIP_TRUE == los_mip_tcp_check_delayack(con))
+        if (MIP_TRUE == los_mip_tcp_check_send_now(con, 1))
         {
-            los_mip_tcp_send_ack(dev, con);
+            /* send data immediately */
+            los_mip_con_send_tcp_msg(con, TCP_SENDD);
         }
-        if (MIP_TRUE == los_mip_tcp_check_close_now(con))
+        else
         {
-            /* no data need send , and in close_wait state */
-            los_mip_tcp_send_fin(dev, con);
-            con->ctlb.tcp->state = TCP_LAST_ACK;
+             /* No data need send, judge if need send delay ack */
+            if (MIP_TRUE == los_mip_tcp_check_delayack(con))
+            {
+                los_mip_tcp_send_ack(dev, con);
+            }
+            if (MIP_TRUE == los_mip_tcp_check_close_now(con))
+            {
+                /* no data need send , and in close_wait state */
+                los_mip_tcp_send_fin(dev, con);
+                con->ctlb.tcp->state = TCP_LAST_ACK;
+            }
         }
     }
     return ;
 }
+
+#ifdef __cplusplus
+#if __cplusplus
+}
+#endif /* __cplusplus */
+#endif /* __cplusplus */

@@ -35,6 +35,12 @@
 #ifndef _LOS_MIP_ERR_H
 #define _LOS_MIP_ERR_H
 
+#ifdef __cplusplus
+#if __cplusplus
+extern "C" {
+#endif /* __cplusplus */
+#endif /* __cplusplus */
+
 #define MIP_OK          0
 #define MIP_ERR_PARAM   1
 
@@ -81,6 +87,10 @@
 #define MIP_ICMP_PKG_LEN_ERR    91
 #define MIP_ICMP_PKG_CHKSUM_ERR 92
 
+#define MIP_IGMP_PKG_LEN_ERR    96
+#define MIP_IGMP_PKG_CHKSUM_ERR 97
+#define MIP_IGMP_TMR_START_ERR  98
+
 #define MIP_CON_NEW_MSG_FAILED      101
 #define MIP_CON_PORT_ALREADY_USED   102
 #define MIP_CON_PORT_RES_USED_OUT   103
@@ -92,4 +102,10 @@
 
 #define MIP_NOT_SUPPORTED           121
 
-#endif
+#ifdef __cplusplus
+#if __cplusplus
+}
+#endif /* __cplusplus */
+#endif /* __cplusplus */
+
+#endif /* _LOS_MIP_ERR_H */

@@ -43,6 +43,12 @@
 #include "los_mip_netbuf.h"
 #include "los_mip_netif.h"
 
+#ifdef __cplusplus
+#if __cplusplus
+extern "C" {
+#endif /* __cplusplus */
+#endif /* __cplusplus */
+
 #define MIP_ETH_HW_LEN 6
 #define MIP_ETH_HDR_LEN 14
 
@@ -80,6 +86,10 @@ int los_mip_eth_input(struct netbuf *p, struct netif *dev);
 u16_t los_mip_get_ip_ver(struct netbuf *p);
 int los_mip_set_ip_ver(struct netbuf *p, u16_t ver);
 
+#ifdef __cplusplus
+#if __cplusplus
+}
+#endif /* __cplusplus */
+#endif /* __cplusplus */
 
-
-#endif
+#endif /* _LOS_MIP_ETHERNET_H */

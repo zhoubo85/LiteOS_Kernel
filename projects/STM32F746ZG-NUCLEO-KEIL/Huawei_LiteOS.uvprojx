@@ -735,6 +735,11 @@
               <FileType>1</FileType>
               <FilePath>..\..\subsys\net\LosMIP\core\los_mip_tcp.c</FilePath>
             </File>
+            <File>
+              <FileName>los_mip_igmp.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\..\subsys\net\LosMIP\core\los_mip_igmp.c</FilePath>
+            </File>
           </Files>
         </Group>
         <Group>

@@ -42,6 +42,12 @@
 #include "los_mip_netbuf.h"
 #include "los_mip_connect.h"
 
+#ifdef __cplusplus
+#if __cplusplus
+extern "C" {
+#endif /* __cplusplus */
+#endif /* __cplusplus */
+
 #define ICMP_TYPE_ECHO 0x08
 #define ICMP_TYPE_ECHO_REPLY 0x00
 #define ICMP_HEADER_LEN 8
@@ -65,4 +71,10 @@ int los_mip_icmp_input(struct netbuf *p,
 int los_mip_icmp_echo_reply(struct netbuf *p, 
                             struct netif *dev, ip_addr_t *dst);
 
-#endif
+#ifdef __cplusplus
+#if __cplusplus
+}
+#endif /* __cplusplus */
+#endif /* __cplusplus */
+
+#endif /* _LOS_MIP_ICMP_H */

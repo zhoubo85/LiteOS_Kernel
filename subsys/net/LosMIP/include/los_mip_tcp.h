@@ -43,6 +43,12 @@
 #include "los_mip_netbuf.h"
 #include "los_mip_connect.h"
 
+#ifdef __cplusplus
+#if __cplusplus
+extern "C" {
+#endif /* __cplusplus */
+#endif /* __cplusplus */
+
 #define MIP_TCP_HDR_LEN 20
 #define MIP_TCP_OPT_MSS_LEN 4
 
@@ -168,8 +174,8 @@ struct tcp_ctl
                                    means every time get one connection come  */
     mip_timer_t     tmr;        /* tcp internel timer, used for calc all kind of timeout */
     u32_t           rto;        /* retransmit timeout value,  */
-    u32_t           srtt;        /* current package sRTT  value  */
-    u32_t           rttvar;     /* RTT average value used for estimate rto */
+    u32_t           srtt;       /* current package smoothed RTT value */
+    u32_t           rttd;       /* RTT deviation value used for estimate rto */
     
     u8_t            flag;       /* tcp flags , like nodelay .... */
     u8_t            rtocnt;     /* count of retransmit */
@@ -209,4 +215,10 @@ u32_t los_mip_tcp_gen_isn(void);
 int los_mip_tcp_delte_seg(struct mip_tcp_seg *seg);
 void los_mip_tcp_timer_callback(u32_t uwPar);
 
-#endif
+#ifdef __cplusplus
+#if __cplusplus
+}
+#endif /* __cplusplus */
+#endif /* __cplusplus */
+
+#endif /* _LOS_MIP_TCP_H */

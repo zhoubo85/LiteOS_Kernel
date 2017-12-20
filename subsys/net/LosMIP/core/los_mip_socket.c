@@ -40,9 +40,17 @@
 #include "los_mip_mem.h"
 #include "los_mip_netbuf.h"
 #include "los_mip_netif.h"
+#include "los_mip_igmp.h"
 #include "los_mip_udp.h"
+#include "los_mip_tcp.h"
 #include "los_mip_connect.h"
 #include "los_mip_socket.h"
+
+#ifdef __cplusplus
+#if __cplusplus
+extern "C" {
+#endif /* __cplusplus */
+#endif /* __cplusplus */
 
 /*****************************************************************************
  Function    : los_mip_socket
@@ -165,7 +173,7 @@ int los_mip_read(int s, void *mem, size_t len)
 int los_mip_write(int s, const void *data, size_t size)
 {
     int len = 0;
-	struct mip_conn *con = NULL;
+  struct mip_conn *con = NULL;
     
     if ((NULL == data) || (size <= 0) || (s < 0))
     {
@@ -805,6 +813,92 @@ int los_mip_ioctlsocket(int s, long cmd, void *argp)
 }
 
 /*****************************************************************************
+ Function    : los_mip_set_ip_option
+ Description : set IPPROTO_IP's options, for example .
+ Input       : s @ socket's handle 
+               level @ specifies the protocol level 
+               optname @  specifies a single option to set
+               optval @ option data's pointer
+               optlen @ option data's length
+ Output      : None
+ Return      : 0 means process ok, other failed.
+ *****************************************************************************/
+static int los_mip_set_ip_option(struct mip_conn *con, int optname, 
+                                 const void *optval, socklen_t optlen)
+{
+    int ret = MIP_OK;
+#if MIP_EN_IGMP
+    struct in_addr *inaddr;
+    ip_addr_t devaddr;
+    ip_addr_t maddr;
+    const struct ip_mreq *mcast = NULL;
+#endif
+    if ((NULL == con) || (NULL == optval))
+    {
+        return -MIP_ERR_PARAM;
+    }
+
+    switch(optname)
+    {
+#if MIP_EN_IGMP
+        case IP_MULTICAST_TTL:
+            if(CONN_UDP != con->type)
+            {
+                /* not udp socket, don't apply this option */
+                return -MIP_ERR_PARAM;
+            }
+            los_mip_udp_set_mcast_ttl(con->ctlb.udp, 
+                                      (u8_t)(*(const u8_t*)optval));
+            break;
+        case IP_MULTICAST_IF:
+            if(CONN_UDP != con->type)
+            {
+                /* not udp socket, don't apply this option */
+                return -MIP_ERR_PARAM;
+            }
+            inaddr = (struct in_addr *)optval;
+            memcpy((void *)&devaddr.addr, (void *)&inaddr->S_un.S_addr,
+                   sizeof(devaddr));
+            ret = los_mip_udp_set_mcast_ip(con->ctlb.udp, &devaddr);
+            break;
+        case IP_ADD_MEMBERSHIP:
+        case IP_DROP_MEMBERSHIP:
+            if(CONN_UDP != con->type)
+            {
+                /* not udp socket, don't apply this option */
+                return -MIP_ERR_PARAM;
+            }
+            mcast = (const struct ip_mreq *)optval;
+            memcpy((void *)&devaddr.addr, 
+                   (void *)&mcast->imr_interface.S_un.S_addr, 
+                   sizeof(devaddr));
+            memcpy((void *)&maddr.addr, 
+                   (void *)&mcast->imr_multiaddr.S_un.S_addr, 
+                   sizeof(maddr));
+            if(!los_mip_is_multicast(&maddr))
+            {
+                /* not multicast ip , it's error param */
+                return -MIP_ERR_PARAM;
+            }
+            if (IP_ADD_MEMBERSHIP == optname)
+            {
+                ret = los_mip_igmp_join_group(&devaddr, &maddr);
+            }
+            else
+            {
+                ret = los_mip_igmp_leave_group(&devaddr, &maddr);
+                los_mip_udp_reset_mcast_ip(con->ctlb.udp);
+            }
+            break;
+#endif
+        default:
+            break;
+    }
+    
+    return ret;
+}
+
+/*****************************************************************************
  Function    : los_mip_ioctlsocket
  Description : compatible socket interface.set socket options.
  Input       : s @ socket's handle 
@@ -876,6 +970,9 @@ int los_mip_setsockopt(int s, int level,
                     return -MIP_SOCKET_ERR;
             }
             break;
+        case IPPROTO_IP:
+            ret = los_mip_set_ip_option(con, optname, optval, optlen);
+            break;                    
         default:
             return -1;
     }
@@ -906,3 +1003,9 @@ int los_mip_shutdown(int s, int how)
     los_mip_tcp_do_shutdown(con, how);
     return 0;
 }
+
+#ifdef __cplusplus
+#if __cplusplus
+}
+#endif /* __cplusplus */
+#endif /* __cplusplus */

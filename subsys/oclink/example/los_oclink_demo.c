@@ -41,6 +41,12 @@
 #include "max7219_driver_func.h"
 #endif
 
+#ifdef __cplusplus
+#if __cplusplus
+extern "C" {
+#endif /* __cplusplus */
+#endif /* __cplusplus */
+
 /* 0 led off, 1 led on */
 static int test_led_status = 0;
 /* oclink task handle */
@@ -326,3 +332,9 @@ void los_oclink_demo_start(void)
 		return ;
 	}
 }
+
+#ifdef __cplusplus
+#if __cplusplus
+}
+#endif /* __cplusplus */
+#endif /* __cplusplus */

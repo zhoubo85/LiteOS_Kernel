@@ -45,6 +45,12 @@
 #include "los_mip_udp.h"
 #include "los_mip_inet.h"
 
+#ifdef __cplusplus
+#if __cplusplus
+extern "C" {
+#endif /* __cplusplus */
+#endif /* __cplusplus */
+
 /*ip version 4 string address buf length */
 #define MIP_MAX_IP4_ASCII_LEN 16
 /*ip version 4 string address buf */
@@ -176,3 +182,9 @@ u32_t ntohl(u32_t n)
 {
     return htonl(n);
 }
+
+#ifdef __cplusplus
+#if __cplusplus
+}
+#endif /* __cplusplus */
+#endif /* __cplusplus */

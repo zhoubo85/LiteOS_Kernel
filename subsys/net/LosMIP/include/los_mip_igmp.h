@@ -32,16 +32,12 @@
  * applicable export control laws and regulations.
  *---------------------------------------------------------------------------*/
  
-#ifndef _LOS_MIP_TCPIP_CORE_H
-#define _LOS_MIP_TCPIP_CORE_H
+#ifndef _LOS_MIP_IGMP_H
+#define _LOS_MIP_IGMP_H
 
-#include <stdlib.h>
-#include <string.h>
-#include "los_mip_err.h"
 #include "los_mip_typed.h"
-#include "los_mip_mem.h"
-#include "los_mip_netbuf.h"
-#include "los_mip_netif.h"
+#include "los_mip_ipv4.h"
+#include "los_mip_osfunc.h"
 
 #ifdef __cplusplus
 #if __cplusplus
@@ -49,52 +45,56 @@ extern "C" {
 #endif /* __cplusplus */
 #endif /* __cplusplus */
 
-#define MIP_TCPIP_TASK_STACKSIZE 1024
-#define MIP_TCPIP_TASK_PRIO 2
-#define MIP_TCPIP_MBOX_SIZE 6
+#define IGMP_ALL_GROUP  0xE0000001U
+#define IGMP_ALL_ROUTER 0xE0000002U
 
-enum msg_type 
+#define IGMP_MEMB_QUERY   0x11 /* igmp member query message */
+#define IGMP_MEMB_REPORT1 0x12 /* igmp member report message for version 1 */
+#define IGMP_MEMB_REPORT2 0x16 /* igmp member report message for version 2 */
+#define IGMP_MEMB_LEAVE   0x17 /* igmp member leave message for version 2, version 1 don't have leave message */
+#define IGMP_MEMB_REPORT3 0x22 /* igmp member report message for version 3 */
+
+#define IGMP_PKG_V12_SIZE 8 /* igmp version 1 and 2 message length */
+ 
+#define IGMP_DEFAULT_DELAY_TIMEOUT 500 /* means 500 milliseconds */
+
+#define IGMP_STATE_NONE         0x00 /* Init state */
+#define IGMP_STATE_IDLE         0x01 /* nothing is processing */
+#define IGMP_STATE_TMR_RUNNING  0x02 /* group respone delay timer is running */
+
+#define IGMP_TTL    1
+#define RALERT      0x9404U /* router alert option value */
+#define RALERT_LEN  4
+
+PACK_STRUCT_BEGIN
+struct igmp_msgv12 
 {
-    TCPIP_MSG_SKT,      /* socket msg */
-    TCPIP_MSG_INPKT,    /* net work input package msg */
-    TCPIP_MSG_WARP,     /* net work input package msg */
-    TCPIP_MSG_DELCON,   /* delete socket connect msg  */
-    TCPIP_MSG_FDELCON,  /* force delete socket connect msg */
-    TCPIP_MSG_TCP,      /* tcp message's from socket */
-    TCPIP_MSG_MAX
+    PACK_STRUCT_FIELD(u8_t    type);        /* igmp message type, it's compatable with version 1 */
+    PACK_STRUCT_FIELD(u8_t    reserved);    /* reserved */
+    PACK_STRUCT_FIELD(u16_t   checksum);    /* igmp checksum */
+    PACK_STRUCT_FIELD(struct ipv4_addr group_addr); /* igmp group ip address */
+} PACK_STRUCT_STRUCT;
+PACK_STRUCT_END
+
+
+struct mip_igmp_group 
+{
+    /* multicast address */
+    struct ipv4_addr    address;
+    /* timer id for reporting */
+    mip_timer_t         timer;
+    /* indicate if the timer is running */
+    u8_t                state;
+    /* counter of the group address used by local task */
+    u8_t                ref;
+    /* next link */
+    struct mip_igmp_group *next;
 };
 
-
-
-struct mip_msg 
-{
-    enum msg_type type;
-    union 
-    {
-        struct skt_msg *conmsg;//socket 
-        struct 
-        {
-            struct netbuf *p;
-            struct netif *netif;
-            netif_input_func input_fn;
-        } inpkg;
-        struct skt_del_msg *delcon;
-        struct skt_tcp_msg *tcpmsg;
-    } msg;
-    
-};
-
-struct arp_msg_wait_list
-{
-    struct mip_msg *msg;
-    u32_t storetm;
-    struct arp_msg_wait_list *next;
-};
-
-
-int los_mip_tcpip_inpkt(struct netbuf *p, struct netif *inif);
-void los_mip_tcpip_init(void *arg);
-int los_mip_tcpip_snd_msg(struct mip_msg *msg);
+int los_mip_igmp_input(struct netbuf *p, struct netif *dev, 
+                       ip_addr_t *src, ip_addr_t *dst);
+int los_mip_igmp_join_group(ip_addr_t *ipaddr, ip_addr_t *groupaddr);
+int los_mip_igmp_leave_group(ip_addr_t *ipaddr, ip_addr_t *groupaddr);
 
 #ifdef __cplusplus
 #if __cplusplus
@@ -102,4 +102,4 @@ int los_mip_tcpip_snd_msg(struct mip_msg *msg);
 #endif /* __cplusplus */
 #endif /* __cplusplus */
 
-#endif /* _LOS_MIP_TCPIP_CORE_H */
+#endif /* _LOS_MIP_IGMP_H */

@@ -33,7 +33,11 @@
  *---------------------------------------------------------------------------*/
  
 
-
+#ifdef __cplusplus
+#if __cplusplus
+extern "C" {
+#endif /* __cplusplus */
+#endif /* __cplusplus */
 
 #define WITH_LITEOS
 
@@ -48,18 +52,26 @@
 #include "coap_core.h"
 #include "los_coap_err.h"
 
-
 #define RANDOM_TOKEN_LEN 8
 /* max struct size that can malloc from mempool */
 #define G_LOS_COAP_SMALL_STRUCT_MAX 64
 /* mempool size of coap */
 #define G_LOS_COAP_MEM_POOL_SIZE 2048
+
+#if defined ( __CC_ARM ) /* MDK Compiler */
+__align(4) unsigned char g_los_coap_mempool[G_LOS_COAP_MEM_POOL_SIZE];
+#elif defined ( __ICCARM__ )/* IAR Compiler */
+#pragma data_alignment=4
 unsigned char g_los_coap_mempool[G_LOS_COAP_MEM_POOL_SIZE];
+#elif defined ( __GNUC__ )/* GNU Compiler */
+unsigned char g_los_coap_mempool[G_LOS_COAP_MEM_POOL_SIZE];
+#endif
+
 unsigned char g_los_token[4] = {0};
 unsigned char *g_coap_mem = NULL;
 
-int los_coap_mip_send(void *handle, char *buf, int size);
-int los_coap_mip_read(void *handle, char *buf, int size);
+static int los_coap_mip_send(void *handle, char *buf, int size);
+static int los_coap_mip_read(void *handle, char *buf, int size);
 
 /* coap recive and send function callback */
 struct udp_ops network_ops = 
@@ -385,7 +397,7 @@ int los_coap_free_context(coap_context_t *ctx)
  Output      : None
  Return      : n @ size that send out by tcp/ip stack.
  *****************************************************************************/
-int los_coap_mip_send(void *handle, char *buf, int size)
+static int los_coap_mip_send(void *handle, char *buf, int size)
 {
     int n = 0;
     struct udp_res_t *res = NULL;
@@ -416,7 +428,7 @@ int los_coap_mip_send(void *handle, char *buf, int size)
  Output      : None
  Return      : n @ size that read from tcp/ip stack.
  *****************************************************************************/
-int los_coap_mip_read(void *handle, char *buf, int size)
+static int los_coap_mip_read(void *handle, char *buf, int size)
 {
     struct timeval tv;
     int n = 0;
@@ -469,3 +481,8 @@ int los_coap_delay(unsigned int ms)
 
 #endif /* WITH_LITEOS */
 
+#ifdef __cplusplus
+#if __cplusplus
+}
+#endif /* __cplusplus */
+#endif /* __cplusplus */

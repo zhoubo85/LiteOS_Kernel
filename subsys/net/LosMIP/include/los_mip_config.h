@@ -35,6 +35,12 @@
 #ifndef _LOS_MIP_CONFIG_H
 #define _LOS_MIP_CONFIG_H
 
+#ifdef __cplusplus
+#if __cplusplus
+extern "C" {
+#endif /* __cplusplus */
+#endif /* __cplusplus */
+
 #define LOS_MPOOL_PKGBUF_SIZE   1024*4
 #define LOS_MPOOL_MSGS_SIZE     512
 #define LOS_MPOOL_SOCKET_SIZE   512*2
@@ -72,4 +78,13 @@
 /* tcp max segement size */
 #define MIP_TCP_MSS                 512
 
-#endif
+/* enable igmp function, 0 means not enable, 1 means enable */
+#define MIP_EN_IGMP 1 
+
+#ifdef __cplusplus
+#if __cplusplus
+}
+#endif /* __cplusplus */
+#endif /* __cplusplus */
+
+#endif /* _LOS_MIP_CONFIG_H */

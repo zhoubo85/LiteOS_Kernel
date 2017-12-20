@@ -37,6 +37,12 @@
 
 #include <stdint.h>
 
+#ifdef __cplusplus
+#if __cplusplus
+extern "C" {
+#endif /* __cplusplus */
+#endif /* __cplusplus */
+
 #if defined (__CC_ARM)
 
 #define PACK_STRUCT_BEGIN __packed
@@ -81,5 +87,10 @@ typedef int32_t   s32_t;
 #define MIP_MAX(a,b)    (((a) > (b)) ? (a) : (b))
 #define MIP_MIN(a,b)    (((a) < (b)) ? (a) : (b))
 
+#ifdef __cplusplus
+#if __cplusplus
+}
+#endif /* __cplusplus */
+#endif /* __cplusplus */
 
-#endif
+#endif /* _LOS_MIP_TYPED_H */

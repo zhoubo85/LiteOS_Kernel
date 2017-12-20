@@ -37,6 +37,12 @@
 
 #include "los_mip_typed.h"
 
+#ifdef __cplusplus
+#if __cplusplus
+extern "C" {
+#endif /* __cplusplus */
+#endif /* __cplusplus */
+
 /* network packet buffer struct */
 struct netbuf 
 {
@@ -80,4 +86,10 @@ int netbuf_que_for_arp(struct netbuf *p);
 int netbuf_get_if_queued(struct netbuf *p);
 int netbuf_remove_queued(struct netbuf *p);
 
-#endif
+#ifdef __cplusplus
+#if __cplusplus
+}
+#endif /* __cplusplus */
+#endif /* __cplusplus */
+
+#endif /* _LOS_MIP_NETPBUF_H */

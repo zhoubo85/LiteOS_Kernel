@@ -45,6 +45,12 @@
 #include "los_mip_connect.h"
 #include "los_mip_tcpip_core.h"
 
+#ifdef __cplusplus
+#if __cplusplus
+extern "C" {
+#endif /* __cplusplus */
+#endif /* __cplusplus */
+
 /* arp wait list for package that need wait arp done */
 static struct arp_msg_wait_list g_arp_w_array[LOS_MIP_MAX_WAIT_CON];
 static struct arp_msg_wait_list *g_arp_wmsgs_h = NULL;
@@ -371,3 +377,9 @@ void los_mip_tcpip_init(void *arg)
                         MIP_TCPIP_TASK_PRIO);
     
 }
+
+#ifdef __cplusplus
+#if __cplusplus
+}
+#endif /* __cplusplus */
+#endif /* __cplusplus */

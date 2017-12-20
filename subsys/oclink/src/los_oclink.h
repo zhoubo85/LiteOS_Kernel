@@ -42,6 +42,12 @@
 #include "coap_core.h"
 #include "los_coap.h"
 
+#ifdef __cplusplus
+#if __cplusplus
+extern "C" {
+#endif /* __cplusplus */
+#endif /* __cplusplus */
+
 #define OCLINK_OK               0
 #define OCLINK_NG               1
 
@@ -93,4 +99,10 @@ int los_oclink_send(char *buf, int len);
 int los_oclink_start(void);
 int los_oclink_stop(void);
 
-#endif
+#ifdef __cplusplus
+#if __cplusplus
+}
+#endif /* __cplusplus */
+#endif /* __cplusplus */
+
+#endif /* _LOS_OCLINK_H */

@@ -39,6 +39,12 @@
 #include "los_mip_netif.h"
 #include "los_mip_ipaddr.h"
 
+#ifdef __cplusplus
+#if __cplusplus
+extern "C" {
+#endif /* __cplusplus */
+#endif /* __cplusplus */
+
 #define MIP_IP_RF 0x8000U        /* reserved fragment flag */
 #define MIP_IP_DF 0x4000U        /* don't fragment flag */
 #define MIP_IP_MF 0x2000U        /* more fragments flag */
@@ -49,12 +55,17 @@
 #define MIP_IPHLEN(x) ((x)&0x0f)
 
 #define MIP_PRT_ICMP    1
+#define MIP_PRT_IGMP    2
 #define MIP_PRT_UDP     17
 #define MIP_PRT_TCP     6
 
 #define MIP_IP_MIN_HLEN 20
+#define MIP_4BYTE_ALIGN(val) (((val) + 3) & ~3)
 
 #define MIP_IPV4_NOOPT_VL 0x45
+
+#define los_mip_ip_equal(addr1, addr2) ((addr1)->addr == (addr2)->addr)
+#define los_mip_ip_addrany(addr1) ((addr1)->addr == MIP_IP_ANY)
 
 /* The IP header for ipv4 */
 PACK_STRUCT_BEGIN
@@ -79,7 +90,7 @@ int los_mip_make_ipaddr(ip_addr_t *addr, u32_t seg1,
 int los_mip_ipv4_output(struct netif *dev, struct netbuf *p, 
                         ip_addr_t *src, ip_addr_t *dest,
                         u8_t ttl, u8_t tos,
-                        u8_t proto);
+                        u8_t proto, u8_t *opt, u8_t optlen);
 int los_mip_is_multicast(struct ipv4_addr *address);
 struct netif *los_mip_ip_route(ip_addr_t *dst);
 u32_t los_mip_checksum(unsigned char *buf, int len);
@@ -88,4 +99,11 @@ u32_t los_mip_checksum_pseudo_ipv4(struct netbuf *p,
                                 u16_t tlen, 
                                 ip_addr_t *src, 
                                 ip_addr_t *dest);
-#endif
+
+#ifdef __cplusplus
+#if __cplusplus
+}
+#endif /* __cplusplus */
+#endif /* __cplusplus */
+
+#endif /* _LOS_MIP_IPV4_H */

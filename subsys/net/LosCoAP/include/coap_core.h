@@ -35,6 +35,11 @@
 #ifndef _LOS_COAP_CORE_H
 #define _LOS_COAP_CORE_H
 
+#ifdef __cplusplus
+#if __cplusplus
+extern "C" {
+#endif /* __cplusplus */
+#endif /* __cplusplus */
 
 #define LOSCOAP_CONSTRAINED_BUF_SIZE 256
 
@@ -253,4 +258,10 @@ typedef struct _coap_msg_list_t
 	struct _coap_pkg_list_t *next;	
 }coap_msg_list_t;
 
-#endif
+#ifdef __cplusplus
+#if __cplusplus
+}
+#endif /* __cplusplus */
+#endif /* __cplusplus */
+
+#endif /* _LOS_COAP_CORE_H */

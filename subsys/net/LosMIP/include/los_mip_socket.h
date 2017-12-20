@@ -41,6 +41,12 @@
 
 #include "los_mip_connect.h"
 
+#ifdef __cplusplus
+#if __cplusplus
+extern "C" {
+#endif /* __cplusplus */
+#endif /* __cplusplus */
+
 typedef u32_t socklen_t;
 
 
@@ -110,7 +116,21 @@ typedef struct fd_set
 #define SOMAXCONN   (MIP_CONN_MAX - 1)  /* default max connection in accept box */
 #define SOMINCONN   1                   /* default min connection in accept box */
 
-#define MIP_SOCKET_SEL_MIN_TM 5
+#define MIP_SOCKET_SEL_MIN_TM 5 /* the minimum select function's internal timeout value */
+
+#if MIP_EN_IGMP
+/* options and types related to multicast membership */
+#define IP_MULTICAST_TTL    9
+#define IP_MULTICAST_IF     10
+#define IP_MULTICAST_LOOP   11
+#define IP_ADD_MEMBERSHIP   12
+#define IP_DROP_MEMBERSHIP  13
+
+typedef struct ip_mreq {
+    struct in_addr imr_multiaddr; /* IP multicast address of group */
+    struct in_addr imr_interface; /* local IP address of interface */
+} ip_mreq;
+#endif /* MIP_EN_IGMP */
 
 int los_mip_socket(int domain, int type, int protocol);
 int los_mip_bind(int s, const struct sockaddr *name, socklen_t namelen);
@@ -133,4 +153,11 @@ int los_mip_select(int maxfdp1, fd_set *readset,
                    struct timeval *timeout);
 int los_mip_write(int s, const void *data, size_t size);
 int los_mip_read(int s, void *mem, size_t len);
-#endif
+
+#ifdef __cplusplus
+#if __cplusplus
+}
+#endif /* __cplusplus */
+#endif /* __cplusplus */
+
+#endif /* _LOS_MIP_SOCKET_H */

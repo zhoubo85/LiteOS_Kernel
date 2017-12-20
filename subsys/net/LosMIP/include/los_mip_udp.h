@@ -42,6 +42,11 @@
 #include "los_mip_netbuf.h"
 #include "los_mip_connect.h"
 
+#ifdef __cplusplus
+#if __cplusplus
+extern "C" {
+#endif /* __cplusplus */
+#endif /* __cplusplus */
 
 PACK_STRUCT_BEGIN
 struct udp_hdr {
@@ -57,22 +62,30 @@ PACK_STRUCT_END
 #define MIP_DHCP_SER_PORT 0x0043
 #define MIP_DHCP_CLI_PORT 0x0044
 
+#define MIP_UDP_DEF_TTL 0xFF
+#define MIP_UDP_DEF_IGMP_TTL 0x1
+
 struct udp_ctl;
 /* @addr the remote IP address from which the packet was received */
 typedef void (*udp_recv_func)(void *arg, struct udp_ctl *pcb, 
                               struct netbuf *p, 
                               const ip_addr_t *addr, u16_t port);
 
-
 struct udp_ctl
 {
     struct udp_ctl *next;
-    ip_addr_t localip;
+    ip_addr_t localip;      /* local ip */
+    ip_addr_t remote_ip;    /* remote ip */
     u16_t lport;            /* local port */
-    ip_addr_t remote_ip; 
     u16_t rport;            /*remote port */
+#if MIP_EN_IGMP
+    /* multicast interface ip address for this connection */
+    ip_addr_t mcast_ip;
+    /* TTL for outgoing multicast packets */
+    u8_t mcast_ttl;
+#endif /* MIP_EN_IGMP */
     u8_t so_opt;            /* Socket options */ 
-    u8_t tos;               /* Type Of Service */           
+    u8_t tos;               /* Type Of Service */
     u8_t ttl;               /* Time To Live */
     udp_recv_func rcvfn;
     void *rcvarg;
@@ -82,5 +95,10 @@ struct udp_ctl
 int los_mip_udp_input(struct netbuf *p, struct netif *dev, ip_addr_t *src, ip_addr_t *dst);
 int los_mip_udp_output( struct udp_ctl *udpctl, struct netbuf *p, ip_addr_t *dst_ip, u16_t dst_port);
 
+#ifdef __cplusplus
+#if __cplusplus
+}
+#endif /* __cplusplus */
+#endif /* __cplusplus */
 
-#endif
+#endif /* _LOS_MIP_UDP_H */

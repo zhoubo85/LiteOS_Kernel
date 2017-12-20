@@ -44,6 +44,12 @@
 #include "los_mip_mem.h"
 #include "los_mip_config.h"
 
+#ifdef __cplusplus
+#if __cplusplus
+extern "C" {
+#endif /* __cplusplus */
+#endif /* __cplusplus */
+
 #if defined ( __CC_ARM ) /* MDK Compiler */
 __align(4) u8_t g_pool_pkgbuf[LOS_MPOOL_PKGBUF_SIZE] = {0};
 __align(4) u8_t g_pool_msgs[LOS_MPOOL_MSGS_SIZE] = {0};
@@ -76,33 +82,33 @@ u8_t* g_mpools_p[MPOOL_MAX] = {NULL};
  *****************************************************************************/
 int los_mpools_init(void)
 {
-	UINT32 uwRet;
-	
-	g_mpools_p[MPOOL_NETBUF] = g_pool_pkgbuf;
-	uwRet = LOS_MemInit(g_mpools_p[MPOOL_NETBUF], LOS_MPOOL_PKGBUF_SIZE);
+    UINT32 uwRet;
+  
+    g_mpools_p[MPOOL_NETBUF] = g_pool_pkgbuf;
+    uwRet = LOS_MemInit(g_mpools_p[MPOOL_NETBUF], LOS_MPOOL_PKGBUF_SIZE);
     if (LOS_OK != uwRet) 
     {
-    	return -MIP_POOL_INIT_FAILED;
+        return -MIP_POOL_INIT_FAILED;
     }
     
-	g_mpools_p[MPOOL_MSGS] = g_pool_msgs;
-	uwRet = LOS_MemInit(g_mpools_p[MPOOL_MSGS], LOS_MPOOL_MSGS_SIZE);
+    g_mpools_p[MPOOL_MSGS] = g_pool_msgs;
+    uwRet = LOS_MemInit(g_mpools_p[MPOOL_MSGS], LOS_MPOOL_MSGS_SIZE);
     if (LOS_OK != uwRet) 
     {
-    	return -MIP_POOL_INIT_FAILED;
+        return -MIP_POOL_INIT_FAILED;
     }  
-	g_mpools_p[MPOOL_SOCKET] = g_pool_sockets;
-	uwRet = LOS_MemInit(g_mpools_p[MPOOL_SOCKET], LOS_MPOOL_SOCKET_SIZE);
+    g_mpools_p[MPOOL_SOCKET] = g_pool_sockets;
+    uwRet = LOS_MemInit(g_mpools_p[MPOOL_SOCKET], LOS_MPOOL_SOCKET_SIZE);
     if (LOS_OK != uwRet) 
     {
-    	return -MIP_POOL_INIT_FAILED;
+        return -MIP_POOL_INIT_FAILED;
     }
     
-	g_mpools_p[MPOOL_TCP] = g_pool_tcp;
-	uwRet = LOS_MemInit(g_mpools_p[MPOOL_TCP], LOS_MPOOL_TCP_SIZE);
+    g_mpools_p[MPOOL_TCP] = g_pool_tcp;
+    uwRet = LOS_MemInit(g_mpools_p[MPOOL_TCP], LOS_MPOOL_TCP_SIZE);
     if (LOS_OK != uwRet) 
     {
-    	return -MIP_POOL_INIT_FAILED;
+      return -MIP_POOL_INIT_FAILED;
     }      
     return MIP_OK;
 }
@@ -125,7 +131,7 @@ void *los_mpools_malloc(mpool_t type, u32_t size)
     }
     p = LOS_MemAlloc(g_mpools_p[type], size);
     
-	return p;
+    return p;
 }
 
 /*****************************************************************************
@@ -149,5 +155,11 @@ int los_mpools_free(mpool_t type, void *mem)
     {
         return -MIP_MEM_FREE_FAILED;
     }
-	return MIP_OK;
+    return MIP_OK;
 }
+
+#ifdef __cplusplus
+#if __cplusplus
+}
+#endif /* __cplusplus */
+#endif /* __cplusplus */

@@ -42,6 +42,12 @@
 #include "los_mip_ipv4.h"
 #include "los_mip_icmp.h"
 
+#ifdef __cplusplus
+#if __cplusplus
+extern "C" {
+#endif /* __cplusplus */
+#endif /* __cplusplus */
+
 /*****************************************************************************
  Function    : los_mip_icmp_input
  Description : icmp package process function.
@@ -105,6 +111,12 @@ int los_mip_icmp_echo_reply(struct netbuf *p, struct netif *dev, ip_addr_t *dst)
     
     ret = los_mip_ipv4_output(dev, 
                               p, &dev->ip_addr, dst,
-                              0x40, 0, MIP_PRT_ICMP);
+                              0x40, 0, MIP_PRT_ICMP, NULL, 0);
     return ret;
 }
+
+#ifdef __cplusplus
+#if __cplusplus
+}
+#endif /* __cplusplus */
+#endif /* __cplusplus */

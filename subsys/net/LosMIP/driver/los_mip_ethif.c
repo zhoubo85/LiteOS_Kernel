@@ -47,7 +47,11 @@
 #include "los_mip_arp.h"
 #include "los_mip_tcpip_core.h"
 
-
+#ifdef __cplusplus
+#if __cplusplus
+extern "C" {
+#endif /* __cplusplus */
+#endif /* __cplusplus */
 
 #define MIP_DEF_MAC0 0x02
 #define MIP_DEF_MAC1 0x0A
@@ -230,11 +234,11 @@ static void los_mip_eth_hw_init(struct netif *netif)
     netif->flags |= NETIF_FLAG_BROADCAST | NETIF_FLAG_ETHARP;
 
     /* create the task that handles the ETH_MAC */
-	los_mip_thread_new("MIP_ETH_INPUT", 
-						los_mip_ethif_input_task , 
-						(void *)netif,//NULL,/*void *arg,*/ 
-						MIP_ETH_TASK_STACK_SIZE, 
-						MIP_ETH_TASK_PRIO);
+    los_mip_thread_new("MIP_ETH_INPUT", 
+            los_mip_ethif_input_task , 
+            (void *)netif,//NULL,/*void *arg,*/ 
+            MIP_ETH_TASK_STACK_SIZE, 
+            MIP_ETH_TASK_PRIO);
 
     /* Enable MAC and DMA transmission and reception */
     HAL_ETH_Start(&EthHandle);
@@ -496,9 +500,21 @@ int los_mip_dev_eth_init(struct netif *netif)
     netif->arp_xmit = los_mip_arp_xmit; 
     netif->hw_xmit = los_mip_eth_xmit; 
     netif->input = los_mip_tcpip_inpkt;
+    #if MIP_EN_IGMP
+    /* set igmp function and flag*/
+    netif->igmp_config = NULL;
+    netif->flags |= NETIF_FLAG_IGMP;
+    #endif
+    
     /* initialize the hardware */
     los_mip_eth_hw_init(netif);
 #endif
     
     return MIP_OK;
 }
+
+#ifdef __cplusplus
+#if __cplusplus
+}
+#endif /* __cplusplus */
+#endif /* __cplusplus */

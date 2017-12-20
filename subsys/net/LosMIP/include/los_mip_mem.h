@@ -37,12 +37,18 @@
 
 #include "los_mip_typed.h"
 
+#ifdef __cplusplus
+#if __cplusplus
+extern "C" {
+#endif /* __cplusplus */
+#endif /* __cplusplus */
+
 typedef enum {
-	MPOOL_NETBUF,
+    MPOOL_NETBUF,
     MPOOL_MSGS,
     MPOOL_SOCKET,
     MPOOL_TCP,
-	MPOOL_MAX
+    MPOOL_MAX
 }mpool_t;
 
 
@@ -50,5 +56,10 @@ int los_mpools_init(void);
 void *los_mpools_malloc(mpool_t type, u32_t size);
 int los_mpools_free(mpool_t type, void *mem);
 
+#ifdef __cplusplus
+#if __cplusplus
+}
+#endif /* __cplusplus */
+#endif /* __cplusplus */
 
 #endif

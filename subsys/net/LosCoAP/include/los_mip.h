@@ -47,11 +47,22 @@
 #include "los_mip_socket.h"
 #include "los_mip_inet.h"
 
+#ifdef __cplusplus
+#if __cplusplus
+extern "C" {
+#endif /* __cplusplus */
+#endif /* __cplusplus */
+
 struct udp_res_t
 {
     int fd;/* socket fd */ 
     struct sockaddr_in remoteAddr;
 };
 
+#ifdef __cplusplus
+#if __cplusplus
+}
+#endif /* __cplusplus */
+#endif /* __cplusplus */
 
-#endif
+#endif /* _LOS_MIP_H */
